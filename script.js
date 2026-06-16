@@ -30,6 +30,102 @@ document.addEventListener('wheel', function(event) {
 }, { passive: false });
 
 /* ===========================
+   INTEGRAÇÃO COM O BOT (API REAL)
+   =========================== */
+
+// URL da API do bot hospedado no Render
+const BOT_API_URL = "https://pag-bot.onrender.com";
+
+// Carrega o nome/ícone do servidor real onde o bot está
+async function loadServerInfo() {
+    const nameEl = document.getElementById('serverName');
+    const statusEl = document.getElementById('botStatus');
+    const indicator = document.getElementById('onlineIndicator');
+    const avatarImg = document.getElementById('serverAvatarImg');
+    const avatarSvg = document.getElementById('serverAvatarSvg');
+
+    try {
+        const res = await fetch(`${BOT_API_URL}/api/server-info`);
+        const data = await res.json();
+
+        if (data.online && data.servers && data.servers.length > 0) {
+            const server = data.servers[0];
+            if (nameEl) nameEl.textContent = server.name;
+            if (statusEl) statusEl.textContent = "Bot Online";
+            if (indicator) indicator.style.background = "#3ba55d";
+
+            // Mostra o ícone real do servidor, se houver
+            if (server.icon && avatarImg && avatarSvg) {
+                avatarImg.src = server.icon;
+                avatarImg.style.display = "block";
+                avatarSvg.style.display = "none";
+            }
+        } else {
+            if (nameEl) nameEl.textContent = "Bot sem servidor";
+            if (statusEl) statusEl.textContent = "Bot Offline";
+            if (indicator) indicator.style.background = "#ed4245";
+        }
+    } catch (err) {
+        console.log("[v0] Erro ao buscar server-info:", err.message);
+        if (nameEl) nameEl.textContent = "Bot Offline";
+        if (statusEl) statusEl.textContent = "Sem conexão";
+        if (indicator) indicator.style.background = "#ed4245";
+    }
+}
+
+// Carrega os canais reais do servidor e preenche os seletores de Configurações
+async function loadChannels() {
+    const selects = [
+        document.getElementById('channelCompras'),
+        document.getElementById('channelLogs'),
+        document.getElementById('channelTickets')
+    ].filter(Boolean);
+
+    if (selects.length === 0) return;
+
+    try {
+        const res = await fetch(`${BOT_API_URL}/api/channels`);
+        const data = await res.json();
+
+        if (data.online && data.channels && data.channels.length > 0) {
+            const savedSettings = JSON.parse(localStorage.getItem('pagbot_settings') || '{}');
+
+            selects.forEach(select => {
+                const settingKey = select.dataset.setting;
+                select.innerHTML = '<option value="">Selecione um canal...</option>' +
+                    data.channels.map(c =>
+                        `<option value="${c.id}">#${c.name}</option>`
+                    ).join('');
+
+                // Restaura o canal salvo anteriormente
+                if (savedSettings[settingKey]) {
+                    select.value = savedSettings[settingKey];
+                }
+            });
+        } else {
+            selects.forEach(select => {
+                select.innerHTML = '<option value="">Bot offline - sem canais</option>';
+            });
+        }
+    } catch (err) {
+        console.log("[v0] Erro ao buscar canais:", err.message);
+        selects.forEach(select => {
+            select.innerHTML = '<option value="">Sem conexão com o bot</option>';
+        });
+    }
+}
+
+// Salva as configurações de canais escolhidas
+function saveSettings() {
+    const settings = {};
+    document.querySelectorAll('[data-setting]').forEach(el => {
+        settings[el.dataset.setting] = el.value;
+    });
+    localStorage.setItem('pagbot_settings', JSON.stringify(settings));
+    showToast("Configurações salvas!");
+}
+
+/* ===========================
    BANCO DE DADOS (LOCAL STORAGE)
    =========================== */
 
@@ -249,3 +345,16 @@ if (addProductBtn) {
 
 loadDatabase();
 showPage('dashboard');
+
+// Busca dados reais do bot
+loadServerInfo();
+loadChannels();
+
+// Atualiza o status do bot a cada 60 segundos
+setInterval(loadServerInfo, 60000);
+
+// Liga o botão de salvar configurações
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener('click', saveSettings);
+}

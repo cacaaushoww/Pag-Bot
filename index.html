@@ -34,15 +34,16 @@
             <div class="header-right">
                 <div class="server-info">
                     <div class="server-avatar">
-                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <svg id="serverAvatarSvg" width="32" height="32" viewBox="0 0 32 32" fill="none">
                             <circle cx="16" cy="16" r="15" fill="#2C2F33" stroke="#5865F2" stroke-width="2"/>
                             <text x="16" y="20" font-size="16" font-weight="bold" fill="#5865F2" text-anchor="middle">S</text>
                         </svg>
-                        <span class="online-indicator"></span>
+                        <img id="serverAvatarImg" alt="Ícone do servidor" style="display:none;width:32px;height:32px;border-radius:50%;" />
+                        <span class="online-indicator" id="onlineIndicator"></span>
                     </div>
                     <div class="server-details">
-                        <p class="server-name">Servidor Premium</p>
-                        <p class="bot-status">Bot Online</p>
+                        <p class="server-name" id="serverName">Carregando...</p>
+                        <p class="bot-status" id="botStatus">Conectando...</p>
                     </div>
                 </div>
             </div>
@@ -910,28 +911,22 @@
 
                 <div class="form-group">
                     <label>Canal de Compras</label>
-                    <select>
+                    <select id="channelCompras" data-setting="canal_compras">
                         <option>Selecione um canal...</option>
-                        <option selected>#vendas</option>
-                        <option>#compras</option>
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Canal de Logs</label>
-                    <select>
+                    <select id="channelLogs" data-setting="canal_logs">
                         <option>Selecione um canal...</option>
-                        <option selected>#logs</option>
-                        <option>#atividades</option>
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Canal de Tickets</label>
-                    <select>
+                    <select id="channelTickets" data-setting="canal_tickets">
                         <option>Selecione um canal...</option>
-                        <option selected>#suporte</option>
-                        <option>#tickets</option>
                     </select>
                 </div>
 
@@ -950,7 +945,7 @@
                     <input type="text" placeholder="Nome do cargo">
                 </div>
 
-                <button class="btn btn-primary btn-large">Salvar Configurações</button>
+                <button class="btn btn-primary btn-large" id="saveSettingsBtn">Salvar Configurações</button>
             </div>
         </div>
     </main>

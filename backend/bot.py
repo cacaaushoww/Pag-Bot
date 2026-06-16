@@ -5,7 +5,7 @@ from discord.ext import commands, tasks
 import asyncio
 import json
 import datetime
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 
 from payments import PaymentProcessor
@@ -117,10 +117,68 @@ async def daily_backup():
     data_backup.create_backup(sample_data, "vendabot_backup")
 
 app = Flask('')
+
+# Libera o acesso do painel (GitHub Pages) à API do bot (CORS)
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 @app.route('/')
 def home(): return "VendaBot Slash Online!"
 
-def run_web(): app.run(host='0.0.0.0', port=8080)
+@app.route('/api/status')
+def api_status():
+    """Status geral do bot para o painel."""
+    is_ready = bot.is_ready()
+    return {
+        "online": is_ready,
+        "bot_name": bot.user.name if bot.user else None,
+        "guild_count": len(bot.guilds) if is_ready else 0,
+    }
+
+@app.route('/api/server-info')
+def api_server_info():
+    """Retorna o(s) servidor(es) onde o bot está."""
+    if not bot.is_ready():
+        return {"online": False, "servers": []}
+
+    servers = []
+    for guild in bot.guilds:
+        servers.append({
+            "id": str(guild.id),
+            "name": guild.name,
+            "member_count": guild.member_count,
+            "icon": str(guild.icon.url) if guild.icon else None,
+        })
+    return {"online": True, "servers": servers}
+
+@app.route('/api/channels')
+def api_channels():
+    """Lista os canais de texto reais do servidor para os seletores de configuração."""
+    if not bot.is_ready() or not bot.guilds:
+        return {"online": False, "channels": []}
+
+    # Usa o primeiro servidor por padrão; aceita ?guild_id= para escolher outro
+    guild_id = request.args.get("guild_id")
+    guild = None
+    if guild_id:
+        guild = discord.utils.get(bot.guilds, id=int(guild_id))
+    if guild is None:
+        guild = bot.guilds[0]
+
+    channels = []
+    for channel in guild.text_channels:
+        channels.append({
+            "id": str(channel.id),
+            "name": channel.name,
+            "category": channel.category.name if channel.category else None,
+        })
+    return {"online": True, "guild_name": guild.name, "channels": channels}
+
+def run_web(): app.run(host='0.0.0.0', port=int(os.getenv("PORT", "8080")))
 def keep_alive(): Thread(target=run_web).start()
 
 if __name__ == "__main__":
