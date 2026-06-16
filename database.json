@@ -1,0 +1,29 @@
+{
+    "products": [
+        {
+            "id": 1,
+            "name": "Curso Premium",
+            "category": "Educação",
+            "price": 99.90,
+            "stock": "∞",
+            "status": "Ativo"
+        },
+        {
+            "id": 2,
+            "name": "Ebook Completo",
+            "category": "Digital",
+            "price": 49.90,
+            "stock": "∞",
+            "status": "Ativo"
+        }
+    ],
+    "orders": [],
+    "clients": [],
+    "coupons": [],
+    "logs": [],
+    "settings": {
+        "bot_token": "",
+        "mp_access_token": "",
+        "log_channel_id": ""
+    }
+}
