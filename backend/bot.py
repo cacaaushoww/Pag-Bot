@@ -84,7 +84,14 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
         await interaction.followup.send(embed=embed)
         await discord_logger.log_event("PIX_CREATED", f"Pix de R$ {valor:.2f} gerado por {interaction.user.name}")
     else:
-        await interaction.followup.send("❌ Erro ao gerar Pix. Verifique as configurações do Mercado Pago.")
+        # Tenta capturar o erro específico para ajudar o usuário no celular
+        error_msg = "Erro desconhecido"
+        if payment_data and "message" in payment_data:
+            error_msg = payment_data["message"]
+        elif not MP_ACCESS_TOKEN:
+            error_msg = "MP_ACCESS_TOKEN não configurado no Render"
+            
+        await interaction.followup.send(f"❌ Erro ao gerar Pix: `{error_msg}`. Verifique as Variáveis de Ambiente no Render.")
 
 @bot.tree.command(name="entregar", description="Entrega um produto manualmente para um usuário")
 @app_commands.describe(
