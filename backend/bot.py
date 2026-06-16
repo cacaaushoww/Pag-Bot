@@ -1,5 +1,6 @@
 import os
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 import asyncio
 import json
@@ -12,128 +13,115 @@ from delivery import ProductDeliverer
 from logger import DiscordLogger
 from backup import DataBackup
 
-# Carregar variáveis de ambiente (para tokens e IDs)
-# Em um ambiente de produção, use variáveis de ambiente ou um arquivo .env seguro
-# Exemplo: DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-# Para este exemplo, usaremos placeholders
-
+# Configurações de Tokens via Variáveis de Ambiente (Segurança)
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
-LOG_CHANNEL_ID = 123456789012345678 # Substitua pelo ID do seu canal de logs
+LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "0"))
 
 # Inicializar clientes das funcionalidades
 payment_processor = PaymentProcessor(MP_ACCESS_TOKEN)
-product_deliverer = ProductDeliverer(DISCORD_BOT_TOKEN) # O deliverer usa o mesmo token do bot principal
+product_deliverer = ProductDeliverer(DISCORD_BOT_TOKEN)
 discord_logger = DiscordLogger(DISCORD_BOT_TOKEN, LOG_CHANNEL_ID)
 data_backup = DataBackup()
 
 # Configuração do bot Discord
-intents = discord.Intents.default()
-intents.message_content = True # Necessário para ler o conteúdo das mensagens
-intents.members = True # Necessário para buscar membros
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
+        super().__init__(command_prefix="!", intents=intents)
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+    async def setup_hook(self):
+        # Sincroniza os comandos de barra com o Discord
+        print("Sincronizando comandos de barra...")
+        await self.tree.sync()
+        print("Comandos sincronizados!")
+        
+        # Iniciar tarefas em background
+        daily_backup.start()
+        
+        # Configurar logger e deliverer
+        discord_logger.client = self
+        product_deliverer.client = self
+
+bot = MyBot()
 
 @bot.event
 async def on_ready():
     print(f'Bot VendaBot logado como {bot.user.name} ({bot.user.id})')
     print('------')
-    # Iniciar tarefas em background, se houver
-    daily_backup.start()
-    # Conectar o logger e deliverer ao cliente do bot principal
-    discord_logger.client = bot
-    product_deliverer.client = bot
-    await discord_logger.client.wait_until_ready()
-    await discord_logger.on_ready() # Chamar on_ready do logger para configurar o canal
+    await discord_logger.on_ready()
 
-@bot.command(name="ping")
-async def ping(ctx):
-    "Verifica se o bot está online."
-    await ctx.send("Pong!")
+# --- SLASH COMMANDS (/) ---
 
-@bot.command(name="criar_pix")
-async def create_pix_command(ctx, amount: float, description: str, payer_email: str):
-    "Cria um pagamento Pix e retorna o QR Code ou link."
-    await ctx.send(f"Gerando pagamento Pix para {amount:.2f} com descrição '{description}'...")
+@bot.tree.command(name="ping", description="Verifica se o bot está online")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message(f"🏓 Pong! Latência: {round(bot.latency * 1000)}ms")
+
+@bot.tree.command(name="criar_pix", description="Gera um pagamento Pix real")
+@app_commands.describe(
+    valor="Valor do produto (ex: 10.50)",
+    descricao="O que o cliente está comprando",
+    email="Email do cliente para o Mercado Pago"
+)
+async def criar_pix(interaction: discord.Interaction, valor: float, descricao: str, email: str):
+    await interaction.response.defer(ephemeral=True) # Evita timeout e esconde a resposta inicial
     
-    # Em um cenário real, você geraria um external_reference único
-    external_reference = f"ORDER-{ctx.author.id}-{datetime.datetime.now().timestamp()}"
+    external_reference = f"ORDER-{interaction.user.id}-{datetime.datetime.now().timestamp()}"
+    payment_data = payment_processor.create_pix_payment(valor, descricao, external_reference, email)
     
-    payment_data = payment_processor.create_pix_payment(amount, description, external_reference, payer_email)
-    
-    if payment_data and payment_data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code_base64"):
-        qr_code_base64 = payment_data["point_of_interaction"]["transaction_data"]["qr_code_base64"]
-        qr_code_text = payment_data["point_of_interaction"]["transaction_data"]["qr_code"]
+    if payment_data and "point_of_interaction" in payment_data:
+        transaction_data = payment_data["point_of_interaction"]["transaction_data"]
+        qr_code_text = transaction_data["qr_code"]
         
-        # Em um bot real, você enviaria o QR Code como imagem ou o texto para o usuário
-        await ctx.send(f"Pagamento Pix gerado! Escaneie o QR Code ou use o código:\n```\n{qr_code_text}\n```\n(Para fins de demonstração, o QR Code real seria uma imagem aqui.)")
-        await discord_logger.log_event("PIX_CREATED", f"Pagamento Pix de R$ {amount:.2f} criado por {ctx.author.name}")
+        embed = discord.Embed(title="💳 Pagamento Pix Gerado", color=discord.Color.green())
+        embed.add_field(name="Produto", value=descricao, inline=False)
+        embed.add_field(name="Valor", value=f"R$ {valor:.2f}", inline=True)
+        embed.add_field(name="Código Copia e Cola", value=f"```\n{qr_code_text}\n```", inline=False)
+        embed.set_footer(text="Pague para receber seu produto automaticamente!")
+        
+        await interaction.followup.send(embed=embed)
+        await discord_logger.log_event("PIX_CREATED", f"Pix de R$ {valor:.2f} gerado por {interaction.user.name}")
     else:
-        await ctx.send("Erro ao gerar pagamento Pix. Verifique as configurações do Mercado Pago.")
-        await discord_logger.log_event("PIX_ERROR", f"Falha ao criar Pix para {ctx.author.name}")
+        await interaction.followup.send("❌ Erro ao gerar Pix. Verifique as configurações do Mercado Pago.")
 
-@bot.command(name="entregar_produto")
-async def deliver_product_command(ctx, user_id: int, *, product_details: str):
-    "Entrega um produto para um usuário específico via DM."
-    await ctx.send(f"Tentando entregar produto para o usuário {user_id}...")
+@bot.tree.command(name="entregar", description="Entrega um produto manualmente para um usuário")
+@app_commands.describe(
+    usuario="O usuário que vai receber o produto",
+    produto="Link ou detalhes do produto"
+)
+async def entregar(interaction: discord.Interaction, usuario: discord.Member, produto: str):
+    await interaction.response.defer()
     
-    success = await product_deliverer.send_product(user_id, product_details)
+    success = await product_deliverer.send_product(usuario.id, produto)
     
     if success:
-        await ctx.send(f"Produto entregue com sucesso para o usuário {user_id}!")
-        await discord_logger.log_event("PRODUCT_DELIVERED", f"Produto entregue para {user_id} por {ctx.author.name}")
+        await interaction.followup.send(f"✅ Produto entregue com sucesso para {usuario.mention}!")
+        await discord_logger.log_event("MANUAL_DELIVERY", f"Produto entregue para {usuario.name} por {interaction.user.name}")
     else:
-        await ctx.send(f"Falha ao entregar produto para o usuário {user_id}. Verifique o ID e as permissões de DM.")
-        await discord_logger.log_event("DELIVERY_ERROR", f"Falha na entrega para {user_id} por {ctx.author.name}")
+        await interaction.followup.send(f"❌ Falha ao entregar para {usuario.mention}. DMs fechadas?")
 
-@tasks.loop(hours=24) # Executa a cada 24 horas
+# --- TAREFAS E WEB SERVER ---
+
+@tasks.loop(hours=24)
 async def daily_backup():
-    "Realiza um backup diário dos dados do bot."
-    print("Iniciando backup diário...")
-    # Em um bot real, você coletaria os dados do seu banco de dados ou de outras fontes
-    sample_data = {
-        "timestamp": str(datetime.datetime.now()),
-        "total_sales_today": 10,
-        "active_products": 50,
-        "users": ["user1", "user2"]
-    }
-    backup_file = data_backup.create_backup(sample_data, "vendabot_daily_data")
-    if backup_file:
-        print(f"Backup diário concluído: {backup_file}")
-        await discord_logger.log_event("BACKUP_SUCCESS", f"Backup diário criado: {backup_file}")
-    else:
-        print("Falha no backup diário.")
-        await discord_logger.log_event("BACKUP_FAILURE", "Falha ao criar backup diário.")
+    sample_data = {"timestamp": str(datetime.datetime.now()), "status": "ok"}
+    data_backup.create_backup(sample_data, "vendabot_backup")
 
-@daily_backup.before_loop
-async def before_daily_backup():
-    await bot.wait_until_ready()
-    print("Esperando o bot estar pronto para iniciar o backup diário...")
-
-# Configuração do Flask para o Render
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "VendaBot está online!"
+def home(): return "VendaBot Slash Online!"
 
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
+def run_web(): app.run(host='0.0.0.0', port=8080)
+def keep_alive(): Thread(target=run_web).start()
 
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
-
-# Para rodar o bot
 if __name__ == "__main__":
-    keep_alive() # Inicia o servidor web em uma thread separada
-    # Instalar as dependências necessárias
-    print("Certifique-se de instalar as bibliotecas: pip install requests discord.py")
-    
-    # Iniciar o bot
-    try:
-        bot.run(DISCORD_BOT_TOKEN)
-    except discord.LoginFailure:
-        print("Erro de login: Token do bot inválido. Verifique DISCORD_BOT_TOKEN.")
-    except Exception as e:
-        print(f"Ocorreu um erro ao iniciar o bot: {e}")
+    keep_alive()
+    if DISCORD_BOT_TOKEN:
+        try:
+            bot.run(DISCORD_BOT_TOKEN)
+        except Exception as e:
+            print(f"Erro ao iniciar bot: {e}")
+    else:
+        print("DISCORD_BOT_TOKEN não encontrado nas variáveis de ambiente.")
