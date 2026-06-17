@@ -122,7 +122,7 @@ app = Flask('')
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
@@ -177,6 +177,34 @@ def api_channels():
             "category": channel.category.name if channel.category else None,
         })
     return {"online": True, "guild_name": guild.name, "channels": channels}
+
+@app.route('/api/bot-name', methods=['GET', 'POST'])
+def api_bot_name():
+    """Lê o nome atual do bot (GET) ou altera o nome do bot no Discord (POST)."""
+    if not bot.is_ready() or not bot.user:
+        return {"online": False, "name": None}
+
+    if request.method == 'GET':
+        return {"online": True, "name": bot.user.name}
+
+    # POST -> altera o nome de usuário do bot no Discord
+    data = request.get_json(silent=True) or {}
+    new_name = (data.get("name") or "").strip()
+    if not new_name:
+        return {"ok": False, "error": "Nome vazio"}, 400
+
+    try:
+        # O Flask roda em outra thread; agenda a alteração no loop do bot
+        future = asyncio.run_coroutine_threadsafe(
+            bot.user.edit(username=new_name), bot.loop
+        )
+        future.result(timeout=10)
+        return {"ok": True, "name": new_name}
+    except discord.HTTPException as e:
+        # O Discord limita trocas de nome (2 por hora) e valida o formato
+        return {"ok": False, "error": str(e)}, 400
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
 
 def run_web(): app.run(host='0.0.0.0', port=int(os.getenv("PORT", "8080")))
 def keep_alive(): Thread(target=run_web).start()

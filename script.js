@@ -115,13 +115,62 @@ async function loadChannels() {
     }
 }
 
-// Salva as configurações de canais escolhidas
-function saveSettings() {
+// Carrega o nome atual do bot no campo de Configurações
+async function loadBotName() {
+    const input = document.getElementById('botNameInput');
+    if (!input) return;
+
+    try {
+        const res = await fetch(`${BOT_API_URL}/api/bot-name`);
+        const data = await res.json();
+        if (data.online && data.name) {
+            input.value = data.name;
+            input.dataset.original = data.name;
+        } else {
+            input.placeholder = "Bot offline";
+        }
+    } catch (err) {
+        console.log("[v0] Erro ao buscar nome do bot:", err.message);
+        input.placeholder = "Sem conexão com o bot";
+    }
+}
+
+// Salva as configurações: canais (local) e nome do bot (altera no Discord)
+async function saveSettings() {
     const settings = {};
     document.querySelectorAll('[data-setting]').forEach(el => {
         settings[el.dataset.setting] = el.value;
     });
     localStorage.setItem('pagbot_settings', JSON.stringify(settings));
+
+    // Se o nome do bot mudou, envia para o bot trocar no Discord
+    const input = document.getElementById('botNameInput');
+    if (input) {
+        const newName = input.value.trim();
+        const original = input.dataset.original || "";
+        if (newName && newName !== original) {
+            try {
+                const res = await fetch(`${BOT_API_URL}/api/bot-name`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    input.dataset.original = newName;
+                    showToast("Configurações salvas! Nome do bot atualizado no Discord.");
+                    loadServerInfo();
+                } else {
+                    showToast("Configurações salvas, mas o nome não mudou: " + (data.error || "erro"));
+                }
+            } catch (err) {
+                console.log("[v0] Erro ao trocar nome do bot:", err.message);
+                showToast("Configurações salvas, mas falhou ao conectar com o bot.");
+            }
+            return;
+        }
+    }
+
     showToast("Configurações salvas!");
 }
 
@@ -349,6 +398,7 @@ showPage('dashboard');
 // Busca dados reais do bot
 loadServerInfo();
 loadChannels();
+loadBotName();
 
 // Atualiza o status do bot a cada 60 segundos
 setInterval(loadServerInfo, 60000);
