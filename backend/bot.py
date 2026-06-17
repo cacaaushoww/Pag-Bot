@@ -1,5 +1,6 @@
 import os
 import discord
+import requests
 from discord import app_commands
 from discord.ext import commands, tasks
 import asyncio
@@ -187,22 +188,40 @@ def api_bot_name():
     if request.method == 'GET':
         return {"online": True, "name": bot.user.name}
 
-    # POST -> altera o nome de usuário do bot no Discord
+    # POST -> altera o nome de usuário do bot via API REST do Discord
+    # (mesma abordagem do painel Gerenciar-Bot: PATCH /users/@me)
     data = request.get_json(silent=True) or {}
     new_name = (data.get("name") or "").strip()
     if not new_name:
         return {"ok": False, "error": "Nome vazio"}, 400
 
+    if not DISCORD_BOT_TOKEN:
+        return {"ok": False, "error": "Token do bot não configurado"}, 500
+
     try:
-        # O Flask roda em outra thread; agenda a alteração no loop do bot
-        future = asyncio.run_coroutine_threadsafe(
-            bot.user.edit(username=new_name), bot.loop
+        resp = requests.patch(
+            "https://discord.com/api/v10/users/@me",
+            headers={
+                "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            json={"username": new_name},
+            timeout=10,
         )
-        future.result(timeout=10)
-        return {"ok": True, "name": new_name}
-    except discord.HTTPException as e:
-        # O Discord limita trocas de nome (2 por hora) e valida o formato
-        return {"ok": False, "error": str(e)}, 400
+        if resp.status_code == 200:
+            return {"ok": True, "name": new_name}
+
+        # Erro do Discord (ex: limite de 2 trocas/hora ou nome inválido)
+        try:
+            err = resp.json()
+            msg = err.get("message", "Erro do Discord")
+            # Mensagem específica para rate limit de troca de nome
+            if resp.status_code == 429 or "rate" in str(err).lower():
+                retry = err.get("retry_after")
+                msg = f"Limite de troca de nome atingido. Tente novamente em {int(retry)}s." if retry else "Limite de troca de nome atingido (2 por hora)."
+        except Exception:
+            msg = f"Erro {resp.status_code} do Discord"
+        return {"ok": False, "error": msg}, 400
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
