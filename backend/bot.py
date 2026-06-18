@@ -63,7 +63,7 @@ async def on_ready():
 
 @bot.tree.command(name="ping", description="Verifica se o bot está online")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message(f"🏓 Pong! Latência: {round(bot.latency * 1000)}ms")
+    await interaction.response.send_message(f"Pong! Latência: {round(bot.latency * 1000)}ms")
 
 
 @bot.tree.command(name="criar_pix", description="Gera um pagamento Pix")
@@ -76,7 +76,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
     await interaction.response.defer(ephemeral=True)
 
     if valor <= 0:
-        await interaction.followup.send("❌ O valor deve ser maior que 0!")
+        await interaction.followup.send("O valor deve ser maior que 0!")
         return
 
     settings = ler_settings()
@@ -88,7 +88,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
 
         if not chave_pix:
             await interaction.followup.send(
-                "❌ O método PIX está ativo, mas nenhuma chave PIX foi configurada no painel.\n"
+                "O método PIX está ativo, mas nenhuma chave PIX foi configurada no painel.\n"
                 "Vá em **Pagamentos → PIX → Configurar** e salve uma chave."
             )
             return
@@ -101,7 +101,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
                 descricao=descricao,
             )
         except Exception as e:
-            await interaction.followup.send(f"❌ Erro ao gerar o código PIX: {e}")
+            await interaction.followup.send(f"Erro ao gerar o código PIX: {e}")
             return
 
         labels = {
@@ -113,12 +113,12 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
         }
 
         embed = discord.Embed(
-            title="💳 Pagamento PIX Gerado",
+            title="Pagamento PIX Gerado",
             description=f"**{descricao}**",
             color=discord.Color.green()
         )
         embed.add_field(name="Valor",  value=f"R$ {valor:.2f}",              inline=True)
-        embed.add_field(name="Status", value="⏳ Aguardando Pagamento",       inline=True)
+        embed.add_field(name="Status", value="Aguardando Pagamento",       inline=True)
         embed.add_field(
             name="Código Copia e Cola",
             value=f"```\n{payload}\n```",
@@ -146,7 +146,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
 
     # ── MÉTODO: MERCADO PAGO ────────────────────────────────────────────────
     if not email or "@" not in email:
-        await interaction.followup.send("❌ Email inválido! O método Mercado Pago exige um email do cliente.")
+        await interaction.followup.send("Email inválido! O método Mercado Pago exige um email do cliente.")
         return
 
     external_reference = f"ORDER-{interaction.user.id}-{int(datetime.datetime.now().timestamp())}"
@@ -162,7 +162,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
     if "error" in payment_data:
         error = payment_data["error"]
         await interaction.followup.send(
-            f"❌ Erro ao gerar PIX:\n```\n{error}\n```\n\n"
+            f"Erro ao gerar PIX:\n```\n{error}\n```\n\n"
             f"**Verifique:**\n"
             f"• MP_ACCESS_TOKEN está configurado no Render?\n"
             f"• O token é válido e não expirou?\n"
@@ -207,12 +207,12 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
 
     if qr_code and copy_paste:
         embed = discord.Embed(
-            title="💳 Pagamento PIX Gerado",
+            title="Pagamento PIX Gerado",
             description=f"**{descricao}**",
             color=discord.Color.green()
         )
         embed.add_field(name="Valor",  value=f"R$ {valor:.2f}",        inline=True)
-        embed.add_field(name="Status", value="⏳ Aguardando Pagamento", inline=True)
+        embed.add_field(name="Status", value="Aguardando Pagamento", inline=True)
         embed.add_field(
             name="Código Copia e Cola",
             value=f"```\n{copy_paste}\n```",
@@ -244,10 +244,10 @@ async def entregar(interaction: discord.Interaction, usuario: discord.Member, pr
     await interaction.response.defer()
     success = await product_deliverer.send_product(usuario.id, produto)
     if success:
-        await interaction.followup.send(f"✅ Produto entregue com sucesso para {usuario.mention}!")
+        await interaction.followup.send(f"Produto entregue com sucesso para {usuario.mention}!")
         await discord_logger.log_event("MANUAL_DELIVERY", f"Produto entregue para {usuario.name} por {interaction.user.name}")
     else:
-        await interaction.followup.send(f"❌ Falha ao entregar para {usuario.mention}. DMs fechadas?")
+        await interaction.followup.send(f"Falha ao entregar para {usuario.mention}. DMs fechadas?")
 
 
 @tasks.loop(hours=24)
