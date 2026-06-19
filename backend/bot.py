@@ -102,9 +102,60 @@ app = Flask(__name__)
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Max-Age"] = "3600"
     return response
+
+@app.route('/api/status')
+def api_status():
+    return jsonify({
+        "online": bot.is_ready(),
+        "bot_name": bot.user.name if bot.user else "Iniciando...",
+        "supabase": supabase is not None
+    })
+
+@app.route('/api/server-info')
+def api_server_info():
+    if not bot.is_ready():
+        # Tenta retornar algo básico mesmo se não estiver 100% pronto
+        if bot.user:
+            return jsonify({"online": True, "servers": [], "message": "Bot logado, carregando servidores..."})
+        return jsonify({"online": False, "servers": []})
+    servers = []
+    for guild in bot.guilds:
+        servers.append({
+            "id": str(guild.id),
+            "name": guild.name,
+            "member_count": guild.member_count,
+            "icon": str(guild.icon.url) if guild.icon else None,
+        })
+    return jsonify({"online": True, "servers": servers})
+
+@app.route('/api/channels')
+def api_channels():
+    guild_id = request.args.get("guild_id")
+    if not bot.is_ready():
+        return jsonify({"online": False, "channels": [], "error": "Bot ainda não está pronto"})
+    
+    guild = None
+    if guild_id and guild_id != "undefined":
+        guild = bot.get_guild(int(guild_id))
+    
+    if not guild and bot.guilds:
+        guild = bot.guilds[0]
+    
+    if not guild:
+        return jsonify({"online": True, "channels": [], "error": "Nenhum servidor encontrado"})
+        
+    channels = []
+    for channel in guild.text_channels:
+        channels.append({
+            "id": str(channel.id),
+            "name": channel.name,
+            "category": channel.category.name if channel.category else None,
+        })
+    return jsonify({"online": True, "guild_name": guild.name, "channels": channels})
 
 @app.route('/')
 def home():

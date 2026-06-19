@@ -37,23 +37,30 @@ async function loadServerInfo() {
     try {
         const res  = await fetch(`${BOT_API_URL}/api/server-info`);
         const data = await res.json();
-        if (data.online && data.servers && data.servers.length > 0) {
-            // Se não tiver servidor selecionado, pega o primeiro
-            let currentGuildId = localStorage.getItem('pagbot_current_guild_id');
-            let server = data.servers.find(s => s.id === currentGuildId);
-            
-            if (!server) {
-                server = data.servers[0];
-                localStorage.setItem('pagbot_current_guild_id', server.id);
-            }
-
-            if (nameEl)    nameEl.textContent    = server.name;
+        if (data.online) {
             if (statusEl)  statusEl.textContent  = "Bot Online";
             if (indicator) indicator.style.background = "#3ba55d";
-            if (server.icon && avatarImg && avatarSvg) {
-                avatarImg.src          = server.icon;
-                avatarImg.style.display = "block";
-                avatarSvg.style.display = "none";
+            
+            if (data.servers && data.servers.length > 0) {
+                let currentGuildId = localStorage.getItem('pagbot_current_guild_id');
+                let server = data.servers.find(s => s.id === currentGuildId);
+                
+                if (!server) {
+                    server = data.servers[0];
+                    localStorage.setItem('pagbot_current_guild_id', server.id);
+                }
+
+                if (nameEl)    nameEl.textContent    = server.name;
+                if (server.icon && avatarImg && avatarSvg) {
+                    avatarImg.src          = server.icon;
+                    avatarImg.style.display = "block";
+                    avatarSvg.style.display = "none";
+                }
+                // Após carregar servidor, recarrega canais e nome
+                loadChannels();
+                loadBotName();
+            } else {
+                if (nameEl) nameEl.textContent = "Aguardando servidores...";
             }
         } else {
             if (nameEl)    nameEl.textContent    = "Bot sem servidor";
