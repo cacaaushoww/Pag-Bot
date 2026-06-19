@@ -27,7 +27,7 @@ document.addEventListener('wheel', function(event) {
    =========================== */
 
 const BOT_API_URL = "https://pag-bot.onrender.com";
-const CLIENT_ID   = ""; // coloque o Client ID do seu bot aqui
+const CLIENT_ID   = "1516506393530601653"; // coloque o Client ID do seu bot aqui
 
 let allServers = [];
 
