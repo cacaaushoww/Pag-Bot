@@ -16,7 +16,19 @@ class DiscordLogger:
             if not self.log_channel:
                 print(f"Canal de log com ID {self.log_channel_id} não encontrado.")
 
-    async def log_event(self, event_type, message):
+    async def log_event(self, event_type, message, guild_id=None):
+        # Salvar no Supabase se guild_id for fornecido
+        try:
+            from bot import supabase
+            if supabase and guild_id:
+                supabase.table("activity_logs").insert({
+                    "guild_id": str(guild_id),
+                    "event_type": event_type,
+                    "description": message
+                }).execute()
+        except Exception as e:
+            print(f"Erro ao salvar log no Supabase: {e}")
+
         if self.log_channel:
             embed = discord.Embed(
                 title=f"[{event_type.upper()}] Novo Evento",
