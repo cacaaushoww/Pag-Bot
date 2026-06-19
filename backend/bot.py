@@ -27,10 +27,22 @@ data_backup = DataBackup()
 DB_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'database.json'))
 
 
-def ler_settings():
+def ler_settings(guild_id=None):
     try:
         with open(DB_PATH, 'r', encoding='utf-8') as f:
             db = json.load(f)
+        
+        if guild_id:
+            guild_id_str = str(guild_id)
+            all_guild_settings = db.get('guild_settings', {})
+            # Se não existir config para este servidor, retorna o padrão
+            return all_guild_settings.get(guild_id_str, {
+                "payment_method_active": "mercadopago",
+                "pix_key": "",
+                "mp_access_token": ""
+            })
+        
+        # Fallback para compatibilidade ou retorno vazio
         return db.get('settings', {})
     except Exception as e:
         print(f"Erro ao ler settings do database.json: {e}")
@@ -79,7 +91,7 @@ async def criar_pix(interaction: discord.Interaction, valor: float, descricao: s
         await interaction.followup.send("O valor deve ser maior que 0!")
         return
 
-    settings = ler_settings()
+    settings = ler_settings(interaction.guild_id)
     metodo_ativo = settings.get("payment_method_active", "mercadopago")
 
     # ── MÉTODO: PIX DIRETO ──────────────────────────────────────────────────
@@ -314,32 +326,32 @@ def api_channels():
 def api_bot_name():
     if not bot.is_ready() or not bot.user:
         return {"online": False, "name": None}
+    
+    guild_id = request.args.get("guild_id")
+    if not guild_id:
+        return {"ok": False, "error": "guild_id é obrigatório"}, 400
+
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return {"ok": False, "error": "Servidor não encontrado"}, 404
+
+    bot_member = guild.me
+
     if request.method == 'GET':
-        return {"online": True, "name": bot.user.name}
+        return {"online": True, "name": bot_member.nick or bot.user.name}
+
     data = request.get_json(silent=True) or {}
     new_name = (data.get("name") or "").strip()
+    
     if not new_name:
         return {"ok": False, "error": "Nome vazio"}, 400
-    if not DISCORD_BOT_TOKEN:
-        return {"ok": False, "error": "Token do bot não configurado"}, 500
+
     try:
-        resp = requests.patch(
-            "https://discord.com/api/v10/users/@me",
-            headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}", "Content-Type": "application/json"},
-            json={"username": new_name},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return {"ok": True, "name": new_name}
-        try:
-            err = resp.json()
-            msg = err.get("message", "Erro do Discord")
-            if resp.status_code == 429 or "rate" in str(err).lower():
-                retry = err.get("retry_after")
-                msg = f"Limite de troca de nome atingido. Tente novamente em {int(retry)}s." if retry else "Limite de troca de nome atingido (2 por hora)."
-        except Exception:
-            msg = f"Erro {resp.status_code} do Discord"
-        return {"ok": False, "error": msg}, 400
+        # Em vez de mudar o nome global, muda o apelido no servidor
+        await bot_member.edit(nick=new_name)
+        return {"ok": True, "name": new_name}
+    except discord.Forbidden:
+        return {"ok": False, "error": "O bot não tem permissão para mudar o próprio apelido neste servidor."}, 403
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
@@ -347,34 +359,55 @@ def api_bot_name():
 def api_config():
     if request.method == 'OPTIONS':
         return '', 204
+    
     data = request.get_json(silent=True) or {}
+    guild_id = data.get("guild_id")
+    
+    if not guild_id:
+        return {"ok": False, "error": "guild_id é obrigatório"}, 400
+    
+    guild_id_str = str(guild_id)
     db_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'database.json'))
+    
     try:
         with open(db_path, 'r', encoding='utf-8') as f:
             db = json.load(f)
+        
+        if 'guild_settings' not in db:
+            db['guild_settings'] = {}
+        
+        if guild_id_str not in db['guild_settings']:
+            db['guild_settings'][guild_id_str] = {
+                "payment_method_active": "mercadopago",
+                "pix_key": "",
+                "mp_access_token": ""
+            }
+        
+        settings = db['guild_settings'][guild_id_str]
+        
         if 'pix_key' in data:
-            db['settings']['pix_key'] = data['pix_key']
+            settings['pix_key'] = data['pix_key']
         if 'mp_access_token' in data:
-            db['settings']['mp_access_token'] = data['mp_access_token']
-            payment_processor.access_token = data['mp_access_token']
+            settings['mp_access_token'] = data['mp_access_token']
+            # Nota: O processador de pagamentos global precisará ser instanciado por request ou ter o token passado
         if 'mp_pix_key' in data:
-            db['settings']['mp_pix_key'] = data['mp_pix_key']
+            settings['mp_pix_key'] = data['mp_pix_key']
         if 'payment_method_active' in data:
             metodo = data['payment_method_active']
             if metodo not in ('pix', 'mercadopago'):
                 return {"ok": False, "error": "payment_method_active deve ser 'pix' ou 'mercadopago'"}, 400
-            db['settings']['payment_method_active'] = metodo
+            settings['payment_method_active'] = metodo
+            
         with open(db_path, 'w', encoding='utf-8') as f:
             json.dump(db, f, ensure_ascii=False, indent=4)
         return {"ok": True}
-    except FileNotFoundError:
-        return {"ok": False, "error": "database.json não encontrado"}, 500
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
 @app.route('/api/payment-method', methods=['GET'])
 def api_payment_method():
-    settings = ler_settings()
+    guild_id = request.args.get("guild_id")
+    settings = ler_settings(guild_id)
     return {"ok": True, "active": settings.get("payment_method_active", "mercadopago")}
 
 

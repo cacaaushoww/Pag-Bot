@@ -38,7 +38,15 @@ async function loadServerInfo() {
         const res  = await fetch(`${BOT_API_URL}/api/server-info`);
         const data = await res.json();
         if (data.online && data.servers && data.servers.length > 0) {
-            const server = data.servers[0];
+            // Se não tiver servidor selecionado, pega o primeiro
+            let currentGuildId = localStorage.getItem('pagbot_current_guild_id');
+            let server = data.servers.find(s => s.id === currentGuildId);
+            
+            if (!server) {
+                server = data.servers[0];
+                localStorage.setItem('pagbot_current_guild_id', server.id);
+            }
+
             if (nameEl)    nameEl.textContent    = server.name;
             if (statusEl)  statusEl.textContent  = "Bot Online";
             if (indicator) indicator.style.background = "#3ba55d";
@@ -68,7 +76,8 @@ async function loadChannels() {
     ].filter(Boolean);
     if (selects.length === 0) return;
     try {
-        const res  = await fetch(`${BOT_API_URL}/api/channels`);
+        const guildId = localStorage.getItem('pagbot_current_guild_id');
+        const res  = await fetch(`${BOT_API_URL}/api/channels?guild_id=${guildId || ''}`);
         const data = await res.json();
         if (data.online && data.channels && data.channels.length > 0) {
             const savedSettings = JSON.parse(localStorage.getItem('pagbot_settings') || '{}');
@@ -91,7 +100,8 @@ async function loadBotName() {
     const input = document.getElementById('botNameInput');
     if (!input) return;
     try {
-        const res  = await fetch(`${BOT_API_URL}/api/bot-name`);
+        const guildId = localStorage.getItem('pagbot_current_guild_id');
+        const res  = await fetch(`${BOT_API_URL}/api/bot-name?guild_id=${guildId || ''}`);
         const data = await res.json();
         if (data.online && data.name) {
             input.value          = data.name;
@@ -118,7 +128,8 @@ async function saveSettings() {
         const original = input.dataset.original || "";
         if (newName && newName !== original) {
             try {
-                const res  = await fetch(`${BOT_API_URL}/api/bot-name`, {
+                const guildId = localStorage.getItem('pagbot_current_guild_id');
+                const res  = await fetch(`${BOT_API_URL}/api/bot-name?guild_id=${guildId || ''}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: newName })
@@ -276,10 +287,11 @@ async function salvarConfigPix() {
     localStorage.setItem('pagbot_settings', JSON.stringify(settings));
 
     try {
+        const guildId = localStorage.getItem('pagbot_current_guild_id');
         await fetch(`${BOT_API_URL}/api/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pix_key: key })
+            body: JSON.stringify({ pix_key: key, guild_id: guildId })
         });
     } catch (e) {
         console.log("[v0] Bot offline, chave PIX salva apenas localmente.");
@@ -354,10 +366,11 @@ async function salvarConfigMercadoPago() {
     localStorage.setItem('pagbot_settings', JSON.stringify(settings));
 
     try {
+        const guildId = localStorage.getItem('pagbot_current_guild_id');
         await fetch(`${BOT_API_URL}/api/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mp_access_token: token, mp_pix_key: pixKey })
+            body: JSON.stringify({ mp_access_token: token, mp_pix_key: pixKey, guild_id: guildId })
         });
     } catch (e) {
         console.log("[v0] Bot offline, configuração MP salva apenas localmente.");
