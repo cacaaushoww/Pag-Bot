@@ -1,5 +1,0 @@
-discord.py
-requests
-flask
-supabase
-python-dotenv
