@@ -196,7 +196,7 @@ def api_auth_login():
     resp = redirect(auth_mod.build_authorize_url(state))
     resp.set_cookie(
         "oauth_state", state, max_age=600, httponly=True,
-        secure=COOKIE_SECURE, samesite="Lax"
+        secure=True, samesite="None"
     )
     return resp
 
@@ -226,7 +226,7 @@ def api_auth_callback():
         resp.set_cookie(
             "session", session_token,
             max_age=60 * 60 * 24 * auth_mod.SESSION_DAYS,
-            httponly=True, secure=COOKIE_SECURE, samesite="None" if COOKIE_SECURE else "Lax"
+            httponly=True, secure=True, samesite="None"
         )
         return resp
     except Exception as e:
