@@ -1,0 +1,9 @@
+discord.py
+requests
+flask
+flask-limiter
+pyjwt
+qrcode[pil]
+gunicorn
+supabase
+python-dotenv
