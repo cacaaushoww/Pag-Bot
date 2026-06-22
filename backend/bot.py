@@ -652,8 +652,8 @@ def api_create_coupon(guild_id, session):
         coupon = {
             "guild_id": guild_id,
             "code": data.get("code", "").upper().strip(),
-            "discount_percent": int(data.get("discount_percent", 10)),
-            "max_uses": int(data.get("max_uses", 100)),
+            "discount_percent": int(data.get("discount_percent") if data.get("discount_percent") is not None else 10),
+            "max_uses": int(data.get("max_uses") if data.get("max_uses") is not None else 100),
             "uses": 0,
             "expires_at": data.get("expires_at"),
         }
