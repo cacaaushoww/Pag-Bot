@@ -70,20 +70,62 @@ def ler_settings(guild_id):
         "guild_id": str(guild_id),
         "payment_method_active": "mercadopago",
         "pix_key": "",
-        "mp_access_token": ""
+        "mp_access_token": "",
+        "automations": {
+            "mensagens_automaticas": True,
+            "cargos_automaticos": True,
+            "respostas_automaticas": False,
+            "logs_automaticos": True,
+            "entrega_automatica": True
+        }
     }
     if not supabase:
         return default_settings
     try:
         response = supabase.table("guild_settings").select("*").eq("guild_id", str(guild_id)).execute()
         if response.data and len(response.data) > 0:
-            return response.data[0]
+            settings = response.data[0]
+            # Garante que automations exista
+            if "automations" not in settings or not settings["automations"]:
+                settings["automations"] = default_settings["automations"]
+            return settings
         else:
             supabase.table("guild_settings").insert(default_settings).execute()
             return default_settings
     except Exception as e:
         print(f"❌ Erro ao ler settings: {e}")
         return default_settings
+
+
+def log_event(guild_id, event_type, description):
+    """Salva log no Supabase e tenta enviar no Discord."""
+    try:
+        if supabase and guild_id:
+            supabase.table("activity_logs").insert({
+                "guild_id": str(guild_id),
+                "event_type": event_type,
+                "description": description
+            }).execute()
+    except Exception as e:
+        print(f"Erro ao salvar log no Supabase: {e}")
+
+
+def get_active_automations(guild_id):
+    """Retorna as automações ativas de um servidor."""
+    settings = ler_settings(guild_id)
+    automations = settings.get("automations", {})
+    if isinstance(automations, str):
+        try:
+            automations = json.loads(automations)
+        except:
+            automations = {
+                "mensagens_automaticas": True,
+                "cargos_automaticos": True,
+                "respostas_automaticas": False,
+                "logs_automaticos": True,
+                "entrega_automatica": True
+            }
+    return automations
 
 
 # ──────────────────────────────────────────────
@@ -159,6 +201,348 @@ async def on_ready():
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(f"Pong! Latência: {round(bot.latency * 1000)}ms")
 
+
+# ──────────────────────────────────────────────
+#  COMANDOS DE PRODUTOS
+# ──────────────────────────────────────────────
+
+@bot.tree.command(name="produtos", description="Lista todos os produtos disponíveis no servidor")
+async def produtos(interaction: discord.Interaction):
+    guild_id = str(interaction.guild_id)
+    if not supabase:
+        await interaction.response.send_message("❌ Banco de dados não configurado.", ephemeral=True)
+        return
+
+    try:
+        res = supabase.table("products").select("*").eq("guild_id", guild_id).eq("status", "Ativo").execute()
+        products = res.data or []
+        if not products:
+            await interaction.response.send_message("📦 Nenhum produto cadastrado neste servidor.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="📦 Produtos Disponíveis",
+            description=f"{len(products)} produto(s) encontrado(s):",
+            color=discord.Color.blue()
+        )
+        for p in products[:25]:
+            stock = p.get("stock", "∞")
+            desc = p.get("description", "")[:60]
+            embed.add_field(
+                name=f"{p['name']} — R$ {float(p['price']):,.2f}",
+                value=f"ID: `{p['id']}` | Estoque: {stock}{' | ' + desc if desc else ''}",
+                inline=False
+            )
+        embed.set_footer(text="Use /comprar <id_do_produto> para comprar")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Erro ao listar produtos: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="criar_pix", description="Cria um pagamento PIX manualmente")
+@app_commands.describe(valor="Valor do PIX", descricao="Descrição do pagamento")
+async def criar_pix(interaction: discord.Interaction, valor: float, descricao: str):
+    guild_id = str(interaction.guild_id)
+    settings = ler_settings(guild_id)
+    metodo = settings.get("payment_method_active", "mercadopago")
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        if metodo == "mercadopago":
+            # Usa Mercado Pago
+            mp_token = settings.get("mp_access_token") or MP_ACCESS_TOKEN
+            if not mp_token:
+                await interaction.followup.send("❌ Mercado Pago não configurado. Configure no painel.", ephemeral=True)
+                return
+
+            processor = PaymentProcessor(mp_token)
+            reference = f"PIX-{interaction.user.id}-{int(datetime.datetime.utcnow().timestamp())}"
+            payment_data = processor.create_pix_payment(
+                amount=valor,
+                description=descricao,
+                external_reference=reference,
+                payer_email=f"user_{interaction.user.id}@discord.bot"
+            )
+
+            if "error" in payment_data:
+                await interaction.followup.send(f"❌ Erro ao criar PIX: {payment_data['error']}", ephemeral=True)
+                return
+
+            qr_code = payment_data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code", "")
+            payment_id = payment_data.get("id", "")
+
+            embed = discord.Embed(
+                title="💰 Pagamento PIX — Mercado Pago",
+                description=f"**{descricao}**\nValor: **R$ {valor:,.2f}**",
+                color=discord.Color.green()
+            )
+            if qr_code:
+                embed.add_field(name="Código PIX (copia e cola):", value=f"```{qr_code}```", inline=False)
+            embed.add_field(name="ID do Pagamento:", value=f"`{payment_id}`", inline=False)
+            embed.add_field(name="Status:", value="⏳ Aguardando pagamento...", inline=False)
+            embed.set_footer(text="Assim que o pagamento for confirmado, o produto será entregue automaticamente.")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        else:
+            # Usa PIX puro
+            pix_key = settings.get("pix_key", "")
+            if not pix_key:
+                await interaction.followup.send("❌ Chave PIX não configurada. Configure no painel.", ephemeral=True)
+                return
+
+            import io
+            payload, tipo, chave_fmt = gerar_payload_pix(
+                chave_pix=pix_key,
+                valor=valor,
+                descricao=descricao,
+                txid=f"VENDA{interaction.user.id}{int(datetime.datetime.utcnow().timestamp())}"
+            )
+
+            qr_bytes = gerar_qrcode_base64(payload)
+            embed = discord.Embed(
+                title="💰 Pagamento PIX",
+                description=f"**{descricao}**\nValor: **R$ {valor:,.2f}**",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Código PIX (copia e cola):", value=f"```{payload}```", inline=False)
+            embed.add_field(name="Chave PIX usada:", value=f"{tipo.upper()}: `{chave_fmt}`", inline=False)
+            if qr_bytes:
+                file = discord.File(io.BytesIO(qr_bytes), filename="pix_qrcode.png")
+                embed.set_image(url="attachment://pix_qrcode.png")
+                await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Erro ao criar PIX: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="comprar", description="Compra um produto do servidor")
+@app_commands.describe(produto_id="ID do produto", cupom="Código de cupom de desconto (opcional)")
+async def comprar(interaction: discord.Interaction, produto_id: int, cupom: str = None):
+    guild_id = str(interaction.guild_id)
+    user_id = str(interaction.user.id)
+
+    await interaction.response.defer(ephemeral=True)
+
+    if not supabase:
+        await interaction.followup.send("❌ Banco de dados não configurado.", ephemeral=True)
+        return
+
+    try:
+        # Busca o produto
+        res = supabase.table("products").select("*").eq("id", produto_id).eq("guild_id", guild_id).execute()
+        if not res.data:
+            await interaction.followup.send("❌ Produto não encontrado.", ephemeral=True)
+            return
+
+        product = res.data[0]
+        if product.get("status") != "Ativo":
+            await interaction.followup.send("❌ Este produto não está disponível para venda.", ephemeral=True)
+            return
+
+        price = float(product.get("price", 0))
+
+        # Aplica cupom se fornecido
+        discount = 0
+        if cupom:
+            cupom_res = supabase.table("coupons").select("*").eq("guild_id", guild_id).eq("code", cupom.upper()).execute()
+            if cupom_res.data and len(cupom_res.data) > 0:
+                coupon = cupom_res.data[0]
+                # Verifica expiração
+                if coupon.get("expires_at") and datetime.datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc):
+                    await interaction.followup.send("❌ Cupom expirado.", ephemeral=True)
+                    return
+                # Verifica usos
+                max_uses = coupon.get("max_uses")
+                uses = coupon.get("uses", 0)
+                if max_uses is not None and uses >= max_uses:
+                    await interaction.followup.send("❌ Cupom esgotado.", ephemeral=True)
+                    return
+                discount = coupon.get("discount_percent", 0)
+                price = price * (1 - discount / 100)
+                # Incrementa uso
+                supabase.table("coupons").update({"uses": uses + 1}).eq("id", coupon["id"]).execute()
+            else:
+                await interaction.followup.send("❌ Cupom inválido.", ephemeral=True)
+                return
+
+        if price <= 0:
+            # Produto gratuito — entrega direta
+            order_ref = f"GRATIS-{interaction.user.id}-{int(datetime.datetime.utcnow().timestamp())}"
+            supabase.table("orders").insert({
+                "guild_id": guild_id,
+                "order_reference": order_ref,
+                "customer_id": user_id,
+                "customer_name": interaction.user.name,
+                "product_id": produto_id,
+                "amount": 0,
+                "status": "Pago"
+            }).execute()
+
+            # Entrega automática
+            automations = get_active_automations(guild_id)
+            delivery_content = product.get("delivery_content", "")
+            if automations.get("entrega_automatica", True) and delivery_content:
+                try:
+                    await interaction.user.send(f"🎉 Aqui está seu produto **{product['name']}**:\n\n{delivery_content}")
+                except:
+                    pass
+
+            await interaction.followup.send(f"🎉 **{product['name']}** entregue! Verifique suas DM's.", ephemeral=True)
+            log_event(guild_id, "venda", f"Produto gratuito '{product['name']}' entregue para {interaction.user.name}")
+            return
+
+        # Cria pedido no banco
+        order_ref = f"PED-{interaction.user.id}-{int(datetime.datetime.utcnow().timestamp())}"
+        order_data = {
+            "guild_id": guild_id,
+            "order_reference": order_ref,
+            "customer_id": user_id,
+            "customer_name": interaction.user.name,
+            "product_id": produto_id,
+            "amount": round(price, 2),
+            "status": "Pendente"
+        }
+        supabase.table("orders").insert(order_data).execute()
+
+        settings = ler_settings(guild_id)
+        metodo = settings.get("payment_method_active", "mercadopago")
+
+        if metodo == "mercadopago":
+            mp_token = settings.get("mp_access_token") or MP_ACCESS_TOKEN
+            if not mp_token:
+                await interaction.followup.send("❌ Mercado Pago não configurado.", ephemeral=True)
+                return
+
+            processor = PaymentProcessor(mp_token)
+            payment_data = processor.create_pix_payment(
+                amount=price,
+                description=product["name"],
+                external_reference=order_ref,
+                payer_email=f"user_{interaction.user.id}@discord.bot"
+            )
+
+            if "error" in payment_data:
+                await interaction.followup.send(f"❌ Erro ao gerar PIX: {payment_data['error']}", ephemeral=True)
+                return
+
+            qr_code = payment_data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code", "")
+            payment_id = payment_data.get("id", "")
+
+            # Salva o payment_id no pedido
+            supabase.table("orders").update({"payment_id": str(payment_id)}).eq("order_reference", order_ref).execute()
+
+            embed = discord.Embed(
+                title=f"💳 Compra: {product['name']}",
+                description=f"Valor: **R$ {price:,.2f}**{f' (-{discount}%)' if discount > 0 else ''}\nPedido: `{order_ref}`",
+                color=discord.Color.blue()
+            )
+            if qr_code:
+                embed.add_field(name="Código PIX (copia e cola):", value=f"```{qr_code}```", inline=False)
+            embed.add_field(name="Como pagar:", value="1. Copie o código acima\n2. Abra seu app do banco\n3. Cole e confirme o pagamento", inline=False)
+            embed.set_footer(text="O produto será entregue automaticamente após o pagamento.")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        else:
+            # PIX puro
+            pix_key = settings.get("pix_key", "")
+            if not pix_key:
+                await interaction.followup.send("❌ Chave PIX não configurada.", ephemeral=True)
+                return
+
+            payload, tipo, chave_fmt = gerar_payload_pix(
+                chave_pix=pix_key,
+                valor=price,
+                descricao=product["name"],
+                txid=order_ref
+            )
+
+            embed = discord.Embed(
+                title=f"💳 Compra: {product['name']}",
+                description=f"Valor: **R$ {price:,.2f}**{f' (-{discount}%)' if discount > 0 else ''}\nPedido: `{order_ref}`",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Código PIX (copia e cola):", value=f"```{payload}```", inline=False)
+            embed.add_field(name="Como pagar:", value="1. Copie o código acima\n2. Abra seu app do banco\n3. Cole e confirme o pagamento\n4. Um administrador confirmará seu pagamento", inline=False)
+            embed.set_footer(text="PIX Puro: pagamentos devem ser confirmados manualmente por um admin.")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        log_event(guild_id, "venda", f"Pedido {order_ref} criado: {product['name']} por {interaction.user.name} (R$ {price:,.2f})")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Erro ao processar compra: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="meus_pedidos", description="Lista seus pedidos neste servidor")
+async def meus_pedidos(interaction: discord.Interaction):
+    guild_id = str(interaction.guild_id)
+    user_id = str(interaction.user.id)
+
+    if not supabase:
+        await interaction.response.send_message("❌ Banco de dados não configurado.", ephemeral=True)
+        return
+
+    try:
+        res = supabase.table("orders").select("*, products(name)").eq("guild_id", guild_id).eq("customer_id", user_id).order("created_at", desc=True).execute()
+        orders = res.data or []
+        if not orders:
+            await interaction.response.send_message("📭 Você ainda não fez nenhum pedido neste servidor.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title="📦 Meus Pedidos", color=discord.Color.blue())
+        for o in orders[:10]:
+            prod_name = (o.get("products") or {}).get("name", "Produto")
+            status_emoji = {"Pago": "✅", "Pendente": "⏳", "Cancelado": "❌"}.get(o.get("status", ""), "❓")
+            embed.add_field(
+                name=f"Pedido #{o['id']} — {prod_name}",
+                value=f"{status_emoji} {o.get('status')} | R$ {float(o.get('amount', 0)):,.2f} | {o.get('created_at', '')[:10]}",
+                inline=False
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Erro ao listar pedidos: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="ticket", description="Abre um ticket de suporte")
+@app_commands.describe(assunto="Assunto do ticket")
+async def ticket(interaction: discord.Interaction, assunto: str):
+    guild_id = str(interaction.guild_id)
+    user_id = str(interaction.user.id)
+
+    if not supabase:
+        await interaction.response.send_message("❌ Banco de dados não configurado.", ephemeral=True)
+        return
+
+    try:
+        ticket_data = {
+            "guild_id": guild_id,
+            "customer_id": user_id,
+            "customer_name": interaction.user.name,
+            "subject": assunto,
+            "status": "Aberto"
+        }
+        res = supabase.table("tickets").insert(ticket_data).execute()
+        ticket_id = res.data[0]["id"] if res.data else "?"
+
+        embed = discord.Embed(
+            title="🎫 Ticket Aberto",
+            description=f"Seu ticket foi registrado com sucesso!\n**Assunto:** {assunto}",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="ID do Ticket:", value=f"#T{str(ticket_id).zfill(3)}", inline=False)
+        embed.set_footer(text="Um membro da equipe responderá em breve.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        log_event(guild_id, "ticket", f"Ticket #{ticket_id} aberto por {interaction.user.name}: {assunto}")
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Erro ao abrir ticket: {e}", ephemeral=True)
+
+
 # ──────────────────────────────────────────────
 #  FLASK APP
 # ──────────────────────────────────────────────
@@ -176,10 +560,6 @@ limiter = Limiter(
 
 @app.after_request
 def add_cors_headers(response):
-    # CORS restrito à origem do painel + cookies habilitados.
-    # "*" foi removido de propósito: com cookie de sessão, permitir
-    # qualquer origem equivaleria a permitir qualquer site logado
-    # como o usuário a chamar a API em nome dele.
     response.headers["Access-Control-Allow-Origin"] = CORS_ORIGIN
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
@@ -277,7 +657,7 @@ def api_server_info(session):
     servers = []
     for guild in bot.guilds:
         if str(guild.id) not in permitido:
-            continue  # nunca expor servidores que o usuário logado não administra
+            continue
         servers.append({
             "id": str(guild.id),
             "name": guild.name,
@@ -330,7 +710,7 @@ def api_config(guild_id, session):
     try:
         update_data = {}
         for field in ['pix_key', 'mp_access_token', 'mp_pix_key', 'payment_method_active',
-                      'canal_compras', 'canal_logs', 'canal_tickets']:
+                      'canal_compras', 'canal_logs', 'canal_tickets', 'automations']:
             if field in data:
                 update_data[field] = data[field]
         supabase.table("guild_settings").upsert({"guild_id": guild_id, **update_data}).execute()
@@ -350,6 +730,123 @@ def api_payment_method(guild_id, session):
         return jsonify({"ok": False, "active": "mercadopago"})
     except Exception as e:
         return jsonify({"ok": False, "active": "mercadopago", "error": str(e)})
+
+# ──────────────────────────────────────────────
+#  TESTE MERCADO PAGO (seguro, pelo backend)
+# ──────────────────────────────────────────────
+
+@app.route('/api/test-mp')
+@require_guild
+def api_test_mp(guild_id, session):
+    """Testa a conexão com Mercado Pago usando o token configurado (pelo backend, não expõe token no frontend)."""
+    if not supabase:
+        return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
+    try:
+        settings = ler_settings(guild_id)
+        mp_token = settings.get("mp_access_token") or MP_ACCESS_TOKEN
+        if not mp_token:
+            return jsonify({"ok": False, "error": "Access Token não configurado"}), 400
+
+        headers = {"Authorization": f"Bearer {mp_token}"}
+        resp = requests.get("https://api.mercadopago.com/v1/account", headers=headers, timeout=10)
+        data = resp.json()
+
+        if resp.ok and data.get("email"):
+            return jsonify({"ok": True, "email": data["email"]})
+        else:
+            return jsonify({"ok": False, "error": data.get("message", "Token inválido")}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ──────────────────────────────────────────────
+#  WEBHOOK MERCADO PAGO
+# ──────────────────────────────────────────────
+
+@app.route('/webhook/mercadopago', methods=['POST'])
+@limiter.limit("60 per minute")
+def webhook_mercadopago():
+    """Recebe notificações do Mercado Pago sobre mudanças de status de pagamento."""
+    data = request.get_json(silent=True) or {}
+    payment_id = data.get("data", {}).get("id") or data.get("id")
+    topic = data.get("topic") or data.get("type", "")
+
+    if not payment_id or topic not in ["payment", "merchant_order", ""]:
+        return jsonify({"ok": True}), 200  # Confirma recebimento mesmo se não processar
+
+    try:
+        # Busca detalhes do pagamento no MP
+        headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
+        resp = requests.get(f"https://api.mercadopago.com/v1/payments/{payment_id}", headers=headers, timeout=10)
+        if not resp.ok:
+            return jsonify({"ok": True}), 200
+
+        payment_data = resp.json()
+        status = payment_data.get("status", "")
+        external_ref = payment_data.get("external_reference", "")
+
+        if status in ["approved", "authorized"] and external_ref:
+            # Busca o pedido no banco
+            if supabase:
+                order_res = supabase.table("orders").select("*, products(*)").eq("order_reference", external_ref).execute()
+                if order_res.data and len(order_res.data) > 0:
+                    order = order_res.data[0]
+                    if order.get("status") != "Pago":
+                        # Atualiza status para Pago
+                        supabase.table("orders").update({"status": "Pago"}).eq("order_reference", external_ref).execute()
+
+                        guild_id = order.get("guild_id")
+                        product = order.get("products") or {}
+
+                        # Entrega automática
+                        automations = get_active_automations(guild_id)
+                        delivery_content = product.get("delivery_content", "")
+                        customer_id = order.get("customer_id")
+
+                        if automations.get("entrega_automatica", True) and delivery_content and customer_id:
+                            try:
+                                future = asyncio.run_coroutine_threadsafe(
+                                    bot.get_user(int(customer_id)) or bot.fetch_user(int(customer_id)),
+                                    bot.loop
+                                )
+                                user = future.result(timeout=10)
+                                if user:
+                                    asyncio.run_coroutine_threadsafe(
+                                        user.send(f"🎉 Pagamento confirmado! Aqui está seu produto **{product.get('name', '')}**:\n\n{delivery_content}"),
+                                        bot.loop
+                                    )
+                            except Exception as e:
+                                print(f"Erro na entrega automática: {e}")
+
+                        # Mensagem automática no canal de compras
+                        if automations.get("mensagens_automaticas", True) and guild_id:
+                            try:
+                                settings = ler_settings(guild_id)
+                                canal_id = settings.get("canal_compras")
+                                if canal_id:
+                                    guild = bot.get_guild(int(guild_id))
+                                    if guild:
+                                        channel = guild.get_channel(int(canal_id))
+                                        if channel:
+                                            embed = discord.Embed(
+                                                title="🎉 Nova Venda!",
+                                                description=f"**{order.get('customer_name')}** comprou **{product.get('name', 'Produto')}** por R$ {float(order.get('amount', 0)):,.2f}",
+                                                color=discord.Color.green()
+                                            )
+                                            asyncio.run_coroutine_threadsafe(channel.send(embed=embed), bot.loop)
+                            except Exception as e:
+                                print(f"Erro ao enviar mensagem automática: {e}")
+
+                        # Logs automáticos
+                        if automations.get("logs_automaticos", True):
+                            log_event(guild_id, "venda", f"Pagamento confirmado: {product.get('name', 'Produto')} para {order.get('customer_name')} — R$ {float(order.get('amount', 0)):,.2f}")
+
+        return jsonify({"ok": True}), 200
+
+    except Exception as e:
+        print(f"Erro no webhook MP: {e}")
+        return jsonify({"ok": True}), 200  # Sempre retorna 200 pro MP não reenviar
+
 
 # ──────────────────────────────────────────────
 #  PRODUTOS
@@ -387,14 +884,7 @@ def api_create_product(guild_id, session):
         if not product["name"]:
             return jsonify({"ok": False, "error": "Nome obrigatório"}), 400
         res = supabase.table("products").insert(product).execute()
-        try:
-            supabase.table("activity_logs").insert({
-                "guild_id": guild_id,
-                "event_type": "produto_criado",
-                "description": f"Produto '{product['name']}' criado (R$ {product['price']:.2f})"
-            }).execute()
-        except Exception:
-            pass
+        log_event(guild_id, "produto_criado", f"Produto '{product['name']}' criado (R$ {product['price']:.2f})")
         return jsonify({"ok": True, "product": res.data[0] if res.data else product})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -426,14 +916,7 @@ def api_delete_product(guild_id, session, product_id):
         prod = supabase.table("products").select("name").eq("id", product_id).eq("guild_id", guild_id).execute()
         nome = prod.data[0]["name"] if prod.data else f"#{product_id}"
         supabase.table("products").delete().eq("id", product_id).eq("guild_id", guild_id).execute()
-        try:
-            supabase.table("activity_logs").insert({
-                "guild_id": guild_id,
-                "event_type": "produto_deletado",
-                "description": f"Produto '{nome}' deletado"
-            }).execute()
-        except Exception:
-            pass
+        log_event(guild_id, "produto_deletado", f"Produto '{nome}' deletado")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -529,7 +1012,7 @@ def api_client_orders(guild_id, session, client_id):
 @require_guild
 def api_get_logs(guild_id, session):
     event_type = request.args.get("type")
-    limit = min(int(request.args.get("limit", 100)), 500)  # evita pedir limites absurdos
+    limit = min(int(request.args.get("limit", 100)), 500)
     if not supabase:
         return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
     try:
@@ -691,6 +1174,31 @@ def api_get_affiliates(guild_id, session):
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@app.route('/api/affiliates', methods=['POST'])
+@limiter.limit("20 per minute")
+@require_guild
+def api_create_affiliate(guild_id, session):
+    data = request.get_json(silent=True) or {}
+    if not supabase:
+        return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
+    try:
+        affiliate = {
+            "guild_id": guild_id,
+            "name": data.get("name", "").strip(),
+            "code": data.get("code", "").upper().strip(),
+            "commission_percent": int(data.get("commission_percent", 15)),
+            "clicks": 0,
+            "conversions": 0,
+            "earnings": 0
+        }
+        if not affiliate["name"] or not affiliate["code"]:
+            return jsonify({"ok": False, "error": "Nome e código são obrigatórios"}), 400
+        res = supabase.table("affiliates").insert(affiliate).execute()
+        log_event(guild_id, "afiliado_criado", f"Afiliado '{affiliate['name']}' cadastrado com código {affiliate['code']}")
+        return jsonify({"ok": True, "affiliate": res.data[0] if res.data else affiliate})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 # ──────────────────────────────────────────────
 #  TICKETS
 # ──────────────────────────────────────────────
@@ -705,6 +1213,76 @@ def api_get_tickets(guild_id, session):
         return jsonify({"ok": True, "tickets": res.data or []})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route('/api/tickets', methods=['POST'])
+@limiter.limit("20 per minute")
+@require_guild
+def api_create_ticket(guild_id, session):
+    data = request.get_json(silent=True) or {}
+    if not supabase:
+        return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
+    try:
+        ticket = {
+            "guild_id": guild_id,
+            "customer_id": data.get("customer_id", ""),
+            "customer_name": data.get("customer_name", ""),
+            "subject": data.get("subject", "").strip(),
+            "status": "Aberto"
+        }
+        if not ticket["subject"]:
+            return jsonify({"ok": False, "error": "Assunto obrigatório"}), 400
+        res = supabase.table("tickets").insert(ticket).execute()
+        log_event(guild_id, "ticket", f"Ticket criado por {ticket['customer_name']}: {ticket['subject']}")
+        return jsonify({"ok": True, "ticket": res.data[0] if res.data else ticket})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route('/api/tickets/<int:ticket_id>/close', methods=['PATCH'])
+@limiter.limit("20 per minute")
+@require_guild
+def api_close_ticket(guild_id, session, ticket_id):
+    if not supabase:
+        return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
+    try:
+        supabase.table("tickets").update({
+            "status": "Fechado",
+            "closed_at": datetime.datetime.utcnow().isoformat()
+        }).eq("id", ticket_id).eq("guild_id", guild_id).execute()
+        log_event(guild_id, "ticket", f"Ticket #{ticket_id} fechado")
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+# ──────────────────────────────────────────────
+#  AUTOMAÇÕES
+# ──────────────────────────────────────────────
+
+@app.route('/api/automations', methods=['GET'])
+@require_guild
+def api_get_automations(guild_id, session):
+    try:
+        automations = get_active_automations(guild_id)
+        return jsonify({"ok": True, "automations": automations})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route('/api/automations', methods=['POST'])
+@limiter.limit("20 per minute")
+@require_guild
+def api_set_automations(guild_id, session):
+    data = request.get_json(silent=True) or {}
+    if not supabase:
+        return jsonify({"ok": False, "error": "Supabase não configurado"}), 500
+    try:
+        automations = data.get("automations", {})
+        supabase.table("guild_settings").upsert({
+            "guild_id": guild_id,
+            "automations": json.dumps(automations) if isinstance(automations, dict) else str(automations)
+        }).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 def run_web():
     port = int(os.getenv("PORT", "8080"))
