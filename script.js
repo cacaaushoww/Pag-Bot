@@ -30,7 +30,7 @@ const BOT_API_URL = "https://pag-bot.onrender.com";
 const CLIENT_ID   = "1516506393530601653";
 
 let allServers = [];
-let currentUser = null; // { id, username } — preenchido após login
+let currentUser = null;
 
 function getGuildId() {
     return localStorage.getItem('pagbot_current_guild_id') || '';
@@ -40,13 +40,6 @@ function getGuildId() {
    FETCH AUTENTICADO
    =========================== */
 
-/**
- * Wrapper de fetch que sempre manda o cookie de sessão
- * (credentials: 'include') e trata 401/403 de forma centralizada:
- *  - 401 (sem sessão / sessão expirada) -> mostra a tela de login.
- *  - 403 (autenticado mas sem permissão sobre aquele guild_id) -> toast.
- * Use isso em vez de fetch() direto pra qualquer chamada à API do bot.
- */
 async function apiFetch(path, options = {}) {
     const res = await fetch(`${BOT_API_URL}${path}`, {
         ...options,
@@ -94,7 +87,6 @@ async function checkAuthAndInit() {
         showToast('Não foi possível concluir o login com o Discord. Tente de novo.', 'error');
     }
     if (loginResult) {
-        // Limpa o ?login=... da URL sem recarregar a página
         params.delete('login');
         params.delete('motivo');
         const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
@@ -119,7 +111,7 @@ async function checkAuthAndInit() {
 async function logout() {
     try {
         await apiFetch('/api/auth/logout', { method: 'POST' });
-    } catch { /* já tratado pelo apiFetch */ }
+    } catch {}
     currentUser = null;
     allServers = [];
     showLoginGate('Você saiu. Entre novamente para continuar.');
@@ -388,7 +380,7 @@ async function saveSettings() {
 }
 
 /* ===========================
-   DASHBOARD — STATS REAIS
+   DASHBOARD
    =========================== */
 
 async function loadDashboard() {
@@ -451,7 +443,7 @@ function renderSalesChart(points) {
         <polyline points="${line}" fill="none" stroke="#667eea" stroke-width="2" stroke-linejoin="round"/>
         ${peakIdx > 0 ? `<circle cx="${xs[peakIdx]}" cy="${ys[peakIdx]}" r="4" fill="#667eea"/>
         <text x="${xs[peakIdx]}" y="${ys[peakIdx] - 8}" font-size="9" fill="#667eea" text-anchor="middle">${formatBRL(values[peakIdx]).replace('R$\u00a0','R$')}</text>` : ''}
-        <circle cx="${xs[xs.length-1]}" cy="${ys[ys.length-1]}" r="4" fill="#667eea"/>
+        <circle cx="${xs[xs.length-1]}" cy="${ys[xs.length-1]}" r="4" fill="#667eea"/>
     `;
 }
 
@@ -753,6 +745,7 @@ function renderLogs(logs) {
         'reembolso': ['badge-warning', 'Reembolso'],
         'alteracao': ['badge-info', 'Alteração'],
         'ticket': ['badge-info', 'Ticket'],
+        'afiliado_criado': ['badge-success', 'Afiliado'],
     };
     tbody.innerHTML = logs.map(l => {
         const [cls, label] = typeMap[l.event_type] || ['badge-info', l.event_type || 'Sistema'];
@@ -895,6 +888,36 @@ function renderAffiliates(affiliates) {
     `).join('');
 }
 
+function openAddAffiliateModal() {
+    showModal('Cadastrar Afiliado', `
+        <div class="form-group"><label>Nome *</label><input type="text" id="aName" placeholder="Ex: João Silva"></div>
+        <div class="form-group"><label>Código do Cupom *</label><input type="text" id="aCode" placeholder="Ex: JOAO20" style="text-transform:uppercase;"></div>
+        <div class="form-group"><label>Comissão (%)</label><input type="number" id="aCommission" min="1" max="100" value="15" placeholder="15"></div>
+        <button class="btn btn-primary btn-large" onclick="submitAffiliate()">Cadastrar Afiliado</button>
+    `);
+}
+
+async function submitAffiliate() {
+    const name       = document.getElementById('aName').value.trim();
+    const code       = document.getElementById('aCode').value.trim().toUpperCase();
+    const commission = parseInt(document.getElementById('aCommission').value) || 15;
+    if (!name || !code) { showToast('Nome e código são obrigatórios!', 'error'); return; }
+    try {
+        const res = await apiFetch('/api/affiliates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guild_id: getGuildId(), name, code, commission_percent: commission })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        closeModal();
+        showToast('Afiliado cadastrado!', 'success');
+        loadAffiliates();
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'error');
+    }
+}
+
 /* ===========================
    TICKETS
    =========================== */
@@ -916,7 +939,7 @@ function renderTickets(tickets) {
     const tbody = document.querySelector('#tickets-page .data-table tbody');
     if (!tbody) return;
     if (!tickets.length) {
-        showEmpty('#tickets-page .data-table tbody', 6, 'Nenhum ticket aberto.');
+        showEmpty('#tickets-page .data-table tbody', 6, 'Nenhum ticket.');
         return;
     }
     tbody.innerHTML = tickets.map(t => `
@@ -927,6 +950,9 @@ function renderTickets(tickets) {
             <td>${statusBadge(t.status || 'Aberto')}</td>
             <td>${t.assignee || '—'}</td>
             <td>${formatDateShort(t.created_at)}</td>
+            <td>
+                ${t.status === 'Aberto' ? `<button class="btn btn-secondary btn-small" onclick="closeTicket(${t.id})">Fechar</button>` : '—'}
+            </td>
         </tr>
     `).join('');
 }
@@ -937,6 +963,19 @@ function updateTicketStats(tickets) {
     const els      = document.querySelectorAll('.ticket-stat .big-number');
     if (els[0]) els[0].textContent = abertos;
     if (els[1]) els[1].textContent = fechados;
+}
+
+async function closeTicket(id) {
+    if (!confirm('Fechar este ticket?')) return;
+    try {
+        const res  = await apiFetch(`/api/tickets/${id}/close?guild_id=${getGuildId()}`, { method: 'PATCH' });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        showToast('Ticket fechado!', 'success');
+        loadTickets();
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'error');
+    }
 }
 
 /* ===========================
@@ -1096,18 +1135,13 @@ function abrirConfigMercadoPago() {
 }
 
 async function testarTokenMP() {
-    // Nota: esse teste continua indo direto pro Mercado Pago a partir
-    // do navegador do usuário (não pela sua API), então o token nunca
-    // passa pelo seu backend só pra essa verificação rápida.
-    const token    = document.getElementById('mpTokenInput').value.trim();
     const resultEl = document.getElementById('mpTesteResult');
-    if (!token) { resultEl.style.display='block'; resultEl.style.color='var(--danger)'; resultEl.textContent='❌ Insira o Access Token.'; return; }
     resultEl.style.display='block'; resultEl.style.color='var(--text-secondary)'; resultEl.textContent='⏳ Testando...';
     try {
-        const res  = await fetch('https://api.mercadopago.com/v1/account', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res  = await apiFetch('/api/test-mp');
         const data = await res.json();
-        if (res.ok && data.email) { resultEl.style.color='var(--success)'; resultEl.textContent=`✅ Conectado — ${data.email}`; }
-        else { resultEl.style.color='var(--danger)'; resultEl.textContent=`❌ ${data.message || 'Token inválido.'}`; }
+        if (data.ok && data.email) { resultEl.style.color='var(--success)'; resultEl.textContent=`✅ Conectado — ${data.email}`; }
+        else { resultEl.style.color='var(--danger)'; resultEl.textContent=`❌ ${data.error || 'Token inválido.'}`; }
     } catch { resultEl.style.color='var(--danger)'; resultEl.textContent='❌ Erro de conexão.'; }
 }
 
@@ -1130,7 +1164,72 @@ async function salvarConfigMercadoPago() {
 }
 
 /* ===========================
-   NAVEGAÇÃO — CARREGA DADOS AO TROCAR DE PÁGINA
+   AUTOMAÇÕES
+   =========================== */
+
+let currentAutomations = {
+    mensagens_automaticas: true,
+    cargos_automaticos: true,
+    respostas_automaticas: false,
+    logs_automaticos: true,
+    entrega_automatica: true
+};
+
+async function loadAutomations() {
+    try {
+        const res = await apiFetch(`/api/automations?guild_id=${getGuildId()}`);
+        const data = await res.json();
+        if (data.ok && data.automations) {
+            currentAutomations = data.automations;
+        }
+        renderAutomationToggles();
+    } catch (e) {
+        console.warn('Erro ao carregar automações:', e);
+        renderAutomationToggles();
+    }
+}
+
+function renderAutomationToggles() {
+    const container = document.querySelector('.automations-grid');
+    if (!container) return;
+    const items = [
+        { key: 'mensagens_automaticas', title: 'Mensagens Automáticas', desc: 'Enviar mensagens automáticas após compra' },
+        { key: 'cargos_automaticos', title: 'Cargos Automáticos', desc: 'Atribuir cargos automaticamente aos compradores' },
+        { key: 'respostas_automaticas', title: 'Respostas Automáticas', desc: 'Responder automaticamente a mensagens' },
+        { key: 'logs_automaticos', title: 'Logs Automáticos', desc: 'Registrar automaticamente todas as atividades' },
+        { key: 'entrega_automatica', title: 'Entrega Automática', desc: 'Entregar produtos digitais automaticamente' },
+    ];
+    container.innerHTML = items.map(item => `
+        <div class="automation-card">
+            <div class="automation-header">
+                <h3>${item.title}</h3>
+                <label class="switch">
+                    <input type="checkbox" data-automation="${item.key}" ${currentAutomations[item.key] ? 'checked' : ''} onchange="toggleAutomation('${item.key}', this.checked)">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <p>${item.desc}</p>
+        </div>
+    `).join('');
+}
+
+async function toggleAutomation(key, value) {
+    currentAutomations[key] = value;
+    try {
+        const res = await apiFetch('/api/automations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guild_id: getGuildId(), automations: currentAutomations })
+        });
+        const data = await res.json();
+        showToast(data.ok ? 'Automação salva!' : 'Erro ao salvar.', data.ok ? 'success' : 'error');
+    } catch {
+        showToast('Salvo localmente. Bot offline.', 'info');
+    }
+}
+
+/* ===========================
+   NAVEGAÇÃO
    =========================== */
 
 const PAGE_LOADERS = {
@@ -1143,6 +1242,7 @@ const PAGE_LOADERS = {
     'afiliados':    loadAffiliates,
     'pagamentos':   loadPaymentMethodActive,
     'logs':         loadLogs,
+    'automacoes':   loadAutomations,
 };
 
 let currentPage = 'dashboard';
@@ -1231,11 +1331,12 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 });
 
 /* ===========================
-   EVENTOS DE CLIQUE NOS BOTÕES DAS PÁGINAS
+   EVENTOS DE CLIQUE
    =========================== */
 
 document.getElementById('addProductBtn')?.addEventListener('click', openAddProductModal);
 document.getElementById('addCouponBtn')?.addEventListener('click', openAddCouponModal);
+document.getElementById('addAffiliateBtn')?.addEventListener('click', openAddAffiliateModal);
 document.getElementById('saveSettingsBtn')?.addEventListener('click', saveSettings);
 
 document.addEventListener('click', (e) => {
@@ -1275,6 +1376,4 @@ function startApp() {
     setInterval(loadServerInfo, 60000);
 }
 
-// Nada na aplicação roda antes de confirmar a sessão Discord —
-// é isso que substitui o "abre direto, sem login" de antes.
 checkAuthAndInit();
