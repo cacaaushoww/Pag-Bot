@@ -255,11 +255,10 @@ body {
     overflow-y: auto;
     position: fixed;
     left: 0;
-    top: 68px;
-    width: 260px;
-    height: calc(100vh - 68px);
+    top: 60px;
+    width: 84px;
+    height: calc(100vh - 60px);
     z-index: 99;
-    box-shadow: 20px 0 50px rgba(0,0,0,0.5);
 }
 
 .sidebar.active {
@@ -276,24 +275,6 @@ body {
         border-right: 1px solid var(--border);
         grid-row: 2;
         grid-column: 1;
-        box-shadow: none;
-    }
-
-    .nav-item {
-        flex-direction: column;
-        padding: 10px 6px;
-        gap: 4px;
-    }
-
-    .nav-item span {
-        display: none;
-        font-size: 10.5px;
-        text-align: center;
-    }
-
-    .nav-item.active span {
-        display: block;
-        animation: navLabelIn 0.18s ease;
     }
 }
 
@@ -306,10 +287,11 @@ body {
 
 .nav-item {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 6px;
     color: var(--text-secondary);
     text-decoration: none;
     transition: var(--transition);
@@ -333,9 +315,17 @@ body {
 }
 
 .nav-item span {
-    display: block;
-    font-size: 14px;
+    display: none;
+    font-size: 10.5px;
     font-weight: 600;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.nav-item.active span {
+    display: block;
+    animation: navLabelIn 0.18s ease;
 }
 
 @keyframes navLabelIn {
@@ -352,6 +342,7 @@ body {
     grid-row: 2;
     overflow-y: auto;
     padding: 16px;
+    padding-bottom: 32px;
 }
 
 @media (min-width: 768px) {
