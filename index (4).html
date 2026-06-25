@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VendaBot - Painel de Vendas Discord</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Gate: cobre tudo até confirmar sessão Discord válida -->
+    <div class="login-gate" id="loginGate">
+        <div class="login-card">
+            <svg class="logo" width="48" height="48" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#5865F2"/>
+                <text x="16" y="22" font-size="18" font-weight="bold" fill="white" text-anchor="middle">V</text>
+            </svg>
+            <h1>VendaBot</h1>
+            <p id="loginGateMessage">Entre com sua conta Discord para gerenciar seu painel de vendas.</p>
+            <button class="btn btn-primary btn-large" id="loginBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right:8px;"><path d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.927 1.793 8.18 1.793 12.061 0a.073.073 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.076.076 0 0 0-.04.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.003-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"></path></svg>
+                Entrar com Discord
+            </button>
+            <p class="login-hint">Você só vê os servidores onde tem permissão de Gerenciar Servidor.</p>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+                <div class="logo-section">
+                    <svg class="logo" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <rect width="32" height="32" rx="8" fill="#5865F2"/>
+                        <text x="16" y="22" font-size="18" font-weight="bold" fill="white" text-anchor="middle">V</text>
+                    </svg>
+                    <div class="logo-text">
+                        <h1>VendaBot</h1>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="header-right">
+                <div class="server-info">
+                    <div class="server-avatar">
+                        <svg id="serverAvatarSvg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <circle cx="16" cy="16" r="15" fill="#2C2F33" stroke="#5865F2" stroke-width="2"/>
+                            <text x="16" y="20" font-size="16" font-weight="bold" fill="#5865F2" text-anchor="middle">S</text>
+                        </svg>
+                        <img id="serverAvatarImg" alt="Ícone do servidor" style="display:none;width:32px;height:32px;border-radius:50%;" />
+                        <span class="online-indicator" id="onlineIndicator"></span>
+                    </div>
+                    <div class="server-details">
+                        <p class="server-name" id="serverName">Carregando...</p>
+                        <p class="bot-status" id="botStatus">Conectando...</p>
+                    </div>
+                </div>
+                <button class="action-btn" id="logoutBtn" title="Sair" style="margin-left:8px;display:none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <nav class="nav-menu">
+            <a href="#" class="nav-item active" data-page="dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="8" height="8" rx="2"></rect>
+                    <rect x="13" y="3" width="8" height="8" rx="2"></rect>
+                    <rect x="13" y="13" width="8" height="8" rx="2"></rect>
+                    <rect x="3" y="13" width="8" height="8" rx="2"></rect>
+                </svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-page="produtos">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l8 4.3v9.4L12 21l-8-4.3V7.3L12 3z"></path>
+                    <path d="M4 7.3l8 4.3 8-4.3"></path>
+                    <path d="M12 11.6V21"></path>
+                </svg>
+                <span>Produtos</span>
+            </a>
+            <a href="#" class="nav-item" data-page="pedidos">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6.5 7h11l1 13.2a1.8 1.8 0 0 1-1.8 1.8H7.3a1.8 1.8 0 0 1-1.8-1.8L6.5 7z"></path>
+                    <path d="M9 7V6a3 3 0 1 1 6 0v1"></path>
+                </svg>
+                <span>Pedidos</span>
+            </a>
+            <a href="#" class="nav-item" data-page="clientes">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="3.6"></circle>
+                    <path d="M4.5 20c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6"></path>
+                </svg>
+                <span>Clientes</span>
+            </a>
+            <a href="#" class="nav-item" data-page="tickets">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a1.8 1.8 0 0 0 0 3.6V16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.9a1.8 1.8 0 0 0 0-3.6V9z"></path>
+                    <path d="M13 7.5v2.2M13 12.9v2.2M13 18.3v0"></path>
+                </svg>
+                <span>Tickets</span>
+            </a>
+            <a href="#" class="nav-item" data-page="cupons">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3.5 12.6V6a2 2 0 0 1 2-2h6.6a2 2 0 0 1 1.4.6l8 8a2 2 0 0 1 0 2.8l-6.6 6.6a2 2 0 0 1-2.8 0l-8-8a2 2 0 0 1-.6-1.4z"></path>
+                    <circle cx="8.2" cy="8.2" r="1.1" fill="currentColor" stroke="none"></circle>
+                </svg>
+                <span>Cupons</span>
+            </a>
+            <a href="#" class="nav-item" data-page="afiliados">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="6" cy="6.5" r="2.6"></circle>
+                    <circle cx="6" cy="17.5" r="2.6"></circle>
+                    <circle cx="18" cy="12" r="2.6"></circle>
+                    <path d="M8.3 7.7l7.2 3.2"></path>
+                    <path d="M8.3 16.3l7.2-3.2"></path>
+                </svg>
+                <span>Afiliados</span>
+            </a>
+            <a href="#" class="nav-item" data-page="pagamentos">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2.5" y="5" width="19" height="14" rx="2.4"></rect>
+                    <path d="M2.5 9.8h19"></path>
+                    <path d="M5.8 15h3.4"></path>
+                </svg>
+                <span>Pagamentos</span>
+            </a>
+            <a href="#" class="nav-item" data-page="logs">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4.5" y="4" width="15" height="17" rx="2.2"></rect>
+                    <rect x="9" y="2.2" width="6" height="3" rx="1"></rect>
+                    <path d="M8 11.2h8"></path>
+                    <path d="M8 14.8h8"></path>
+                    <path d="M8 18.4h4.5"></path>
+                </svg>
+                <span>Logs</span>
+            </a>
+            <a href="#" class="nav-item" data-page="automacoes">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 2.5L5 13.5h5.6l-1 8 8.4-11h-5.6l1-8z"></path>
+                </svg>
+                <span>Automações</span>
+            </a>
+            <a href="#" class="nav-item" data-page="configuracoes">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 3.5v2.3"></path>
+                    <path d="M12 18.2v2.3"></path>
+                    <path d="M20.5 12h-2.3"></path>
+                    <path d="M5.8 12H3.5"></path>
+                    <path d="M17.7 6.3l-1.6 1.6"></path>
+                    <path d="M7.9 16.1l-1.6 1.6"></path>
+                    <path d="M17.7 17.7l-1.6-1.6"></path>
+                    <path d="M7.9 7.9L6.3 6.3"></path>
+                </svg>
+                <span>Configurações</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard Page -->
+        <div class="page active" id="dashboard-page">
+            <div class="page-header">
+                <h2>Dashboard</h2>
+                <p class="page-subtitle">Visão geral do seu negócio</p>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <line x1="12" y1="2" x2="12" y2="22"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Vendas Hoje</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Vendas Semana</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Vendas Mês</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <line x1="12" y1="2" x2="12" y2="22"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Faturamento Total</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Produtos Ativos</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Clientes</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M2 7.5V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2.5"></path>
+                            <path d="M2 16.5V19a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2.5"></path>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Tickets Abertos</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">Conversão de Vendas</p>
+                        <h3 class="stat-value">—</h3>
+                        <span class="stat-change neutral">&nbsp;</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="chart-card">
+                    <h3>Vendas dos Últimos 30 Dias</h3>
+                    <svg class="chart" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Produtos Mais Vendidos</h3>
+                    <div class="bar-chart"></div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Receita Mensal</h3>
+                    <svg class="chart" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#43e97b;stop-opacity:0.3" />
+                                <stop offset="100%" style="stop-color:#43e97b;stop-opacity:0" />
+                            </linearGradient>
+                        </defs>
+                        <line x1="40" y1="20" x2="40" y2="160" stroke="#2C2F33" stroke-width="1"/>
+                        <line x1="40" y1="160" x2="390" y2="160" stroke="#2C2F33" stroke-width="1"/>
+                        <polyline points="50,140 80,110 110,95 140,75 170,60 200,50 230,55 260,45 290,40 320,35 350,30 380,25" fill="none" stroke="#43e97b" stroke-width="2"/>
+                        <polygon points="50,140 80,110 110,95 140,75 170,60 200,50 230,55 260,45 290,40 320,35 350,30 380,25 380,160 50,160" fill="url(#grad2)"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Produtos Page -->
+        <div class="page" id="produtos-page">
+            <div class="page-header">
+                <h2>Produtos</h2>
+                <button class="btn btn-primary" id="addProductBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Adicionar Produto
+                </button>
+            </div>
+
+            <div class="table-container">
+                <div class="search-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" placeholder="Pesquisar produtos..." id="productSearch">
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Produto</th>
+                            <th>Categoria</th>
+                            <th>Preço</th>
+                            <th>Estoque</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pedidos Page -->
+        <div class="page" id="pedidos-page">
+            <div class="page-header">
+                <h2>Pedidos</h2>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="todos">Todos</button>
+                    <button class="filter-btn" data-filter="pendentes">Pendentes</button>
+                    <button class="filter-btn" data-filter="pagos">Pagos</button>
+                    <button class="filter-btn" data-filter="cancelados">Cancelados</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <div class="search-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" placeholder="Pesquisar pedido..." id="orderSearch">
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Pedido</th>
+                            <th>Cliente</th>
+                            <th>Produto</th>
+                            <th>Valor</th>
+                            <th>Data</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Clientes Page -->
+        <div class="page" id="clientes-page">
+            <div class="page-header">
+                <h2>Clientes</h2>
+                <p class="page-subtitle">Gerencie seus clientes e histórico de compras</p>
+            </div>
+
+            <div class="clients-grid"></div>
+        </div>
+
+        <!-- Tickets Page -->
+        <div class="page" id="tickets-page">
+            <div class="page-header">
+                <h2>Tickets</h2>
+                <p class="page-subtitle">Gerenciamento de suporte</p>
+            </div>
+
+            <div class="tickets-stats">
+                <div class="ticket-stat">
+                    <h4>Abertos</h4>
+                    <p class="big-number">—</p>
+                </div>
+                <div class="ticket-stat">
+                    <h4>Fechados</h4>
+                    <p class="big-number">—</p>
+                </div>
+                <div class="ticket-stat">
+                    <h4>Tempo Médio</h4>
+                    <p class="big-number">—</p>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Assunto</th>
+                            <th>Status</th>
+                            <th>Atendente</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Cupons Page -->
+        <div class="page" id="cupons-page">
+            <div class="page-header">
+                <h2>Cupons</h2>
+                <button class="btn btn-primary" id="addCouponBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Criar Cupom
+                </button>
+            </div>
+
+            <div class="coupons-grid"></div>
+        </div>
+
+        <!-- Afiliados Page -->
+        <div class="page" id="afiliados-page">
+            <div class="page-header">
+                <h2>Afiliados</h2>
+                <button class="btn btn-primary" id="addAffiliateBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Cadastrar Afiliado
+                </button>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Código</th>
+                            <th>Comissão</th>
+                            <th>Cliques</th>
+                            <th>Conversões</th>
+                            <th>Ganhos</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagamentos Page -->
+        <div class="page" id="pagamentos-page">
+            <div class="page-header">
+                <h2>Pagamentos</h2>
+                <p class="page-subtitle">Gerenciamento de integrações de pagamento</p>
+            </div>
+
+            <div class="integrations-section">
+                <h3>Integrações de Pagamento</h3>
+                <p class="page-subtitle" style="margin-bottom:16px;">Apenas um método pode ficar ativo por vez. O método ativo é o usado pelo comando <strong>/criar_pix</strong> no Discord.</p>
+                <div class="integrations-grid">
+                    <div class="integration-card" data-method="pix">
+                        <div class="integration-card-main">
+                            <h4>PIX</h4>
+                            <p class="integration-status" id="pixStatusLabel">Conectado</p>
+                        </div>
+                        <div class="integration-card-actions">
+                            <label class="switch payment-method-switch" title="Usar este método no /criar_pix">
+                                <input type="checkbox" class="payment-method-toggle" id="pixMethodToggle" data-method="pix">
+                                <span class="slider"></span>
+                            </label>
+                            <button class="btn btn-secondary btn-small">Configurar</button>
+                        </div>
+                    </div>
+                    <div class="integration-card" data-method="mercadopago">
+                        <div class="integration-card-main">
+                            <h4>Mercado Pago</h4>
+                            <p class="integration-status" id="mpStatusLabel">Conectado</p>
+                        </div>
+                        <div class="integration-card-actions">
+                            <label class="switch payment-method-switch" title="Usar este método no /criar_pix">
+                                <input type="checkbox" class="payment-method-toggle" id="mpMethodToggle" data-method="mercadopago" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <button class="btn btn-secondary btn-small">Configurar</button>
+                        </div>
+                    </div>
+                    <div class="integration-card">
+                        <h4>Stripe</h4>
+                        <p class="integration-status">Desconectado</p>
+                        <button class="btn btn-primary btn-small">Conectar</button>
+                    </div>
+                    <div class="integration-card">
+                        <h4>PayPal</h4>
+                        <p class="integration-status">Desconectado</p>
+                        <button class="btn btn-primary btn-small">Conectar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Page -->
+        <div class="page" id="logs-page">
+            <div class="page-header">
+                <h2>Logs</h2>
+                <p class="page-subtitle">Histórico de atividades</p>
+            </div>
+
+            <div class="table-container">
+                <div class="search-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" placeholder="Pesquisar logs..." id="logsSearch">
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Tipo</th>
+                            <th>Descrição</th>
+                            <th>Usuário</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Automações Page -->
+        <div class="page" id="automacoes-page">
+            <div class="page-header">
+                <h2>Automações</h2>
+                <p class="page-subtitle">Configure automações para seu bot</p>
+            </div>
+
+            <div class="automations-grid">
+                <!-- Renderizado dinamicamente pelo JS -->
+            </div>
+        </div>
+
+        <!-- Configurações Page -->
+        <div class="page" id="configuracoes-page">
+            <div class="page-header">
+                <h2>Configurações do Bot</h2>
+                <p class="page-subtitle">Configure os parâmetros do VendaBot</p>
+            </div>
+
+            <div class="settings-form">
+                <div class="form-group">
+                    <label>Nome do Bot</label>
+                    <input type="text" id="botNameInput" placeholder="Carregando nome do bot...">
+                </div>
+
+                <div class="form-group">
+                    <label>Canal de Compras</label>
+                    <select id="channelCompras" data-setting="canal_compras">
+                        <option>Selecione um canal...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Canal de Logs</label>
+                    <select id="channelLogs" data-setting="canal_logs">
+                        <option>Selecione um canal...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Canal de Tickets</label>
+                    <select id="channelTickets" data-setting="canal_tickets">
+                        <option>Selecione um canal...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Cargo Cliente</label>
+                    <input type="text" placeholder="Nome do cargo">
+                </div>
+
+                <div class="form-group">
+                    <label>Cargo Comprador</label>
+                    <input type="text" placeholder="Nome do cargo">
+                </div>
+
+                <div class="form-group">
+                    <label>Cargo Staff</label>
+                    <input type="text" placeholder="Nome do cargo">
+                </div>
+
+                <button class="btn btn-primary btn-large" id="saveSettingsBtn">Salvar Configurações</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile Bottom Menu -->
+    <nav class="mobile-menu">
+        <a href="#" class="mobile-menu-item active" data-page="dashboard">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span>Dashboard</span>
+        </a>
+        <a href="#" class="mobile-menu-item" data-page="produtos">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+            </svg>
+            <span>Produtos</span>
+        </a>
+        <a href="#" class="mobile-menu-item" data-page="pedidos">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="21" r="1"></circle>
+                <circle cx="20" cy="21" r="1"></circle>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+            </svg>
+            <span>Pedidos</span>
+        </a>
+        <a href="#" class="mobile-menu-item" data-page="clientes">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+            </svg>
+            <span>Clientes</span>
+        </a>
+        <a href="#" class="mobile-menu-item" data-page="configuracoes">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v6"></path>
+                <path d="M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24"></path>
+                <path d="M1 12h6m6 0h6"></path>
+                <path d="M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"></path>
+            </svg>
+            <span>Config</span>
+        </a>
+    </nav>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div id="toastMessage" style="display: flex; align-items: center; gap: 10px;"></div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modalClose">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <h2 id="modalTitle">Modal</h2>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
