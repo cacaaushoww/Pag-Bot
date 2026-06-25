@@ -309,7 +309,7 @@ body {
     color: var(--primary);
 }
 
-.nav-item svg {
+.nav-item svg, .nav-item i {
     width: 21px;
     height: 21px;
     flex-shrink: 0;
@@ -569,9 +569,11 @@ body {
     background: var(--surface-light);
 }
 
-.search-box svg {
+.search-box svg, .search-box i {
     color: var(--text-secondary);
     flex-shrink: 0;
+    width: 18px;
+    height: 18px;
 }
 
 .search-box input {
@@ -622,6 +624,9 @@ body {
 }
 
 .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -630,6 +635,11 @@ body {
     padding: 4px 8px;
     transition: var(--transition);
     margin: 0 2px;
+}
+
+.action-btn i {
+    width: 18px;
+    height: 18px;
 }
 
 .action-btn:hover {
@@ -1265,7 +1275,7 @@ input:checked + .slider:before {
     border-top-color: var(--primary);
 }
 
-.mobile-menu-item svg {
+.mobile-menu-item svg, .mobile-menu-item i {
     width: 24px;
     height: 24px;
 }
@@ -1386,8 +1396,10 @@ input:checked + .slider:before {
     transition: var(--transition);
 }
 
-.modal-close:hover {
-    color: var(--text-primary);
+.modal-close svg, .modal-close i {
+    color: var(--text-secondary);
+    width: 24px;
+    height: 24px;
 }
 
 .modal-content h2 {

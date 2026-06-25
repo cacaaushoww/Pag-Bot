@@ -508,14 +508,15 @@ function renderProducts(products) {
             <td>${statusBadge(p.status || 'Ativo')}</td>
             <td>
                 <button class="action-btn" onclick="editProduct(${p.id})" title="Editar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    <i data-lucide="edit-3"></i>
                 </button>
                 <button class="action-btn" onclick="deleteProduct(${p.id}, '${p.name.replace(/'/g, "\\'")}')" title="Deletar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <i data-lucide="trash-2"></i>
                 </button>
             </td>
         </tr>
     `).join('');
+    if (window.lucide) lucide.createIcons();
 }
 
 function openAddProductModal() {
@@ -1068,7 +1069,7 @@ function formatarChavePix(chave) {
     return { tipo: 'aleatoria', label: 'Chave Aleatória', exibicao: chave };
 }
 
-const PIX_ICONS = { cpf:'🪪', cnpj:'🏢', telefone:'📱', email:'📧', aleatoria:'🔑' };
+const PIX_ICONS = { cpf:'credit-card', cnpj:'building-2', telefone:'phone', email:'mail', aleatoria:'key' };
 
 function abrirConfigPix() {
     const saved = JSON.parse(localStorage.getItem('pagbot_settings') || '{}');
@@ -1078,7 +1079,7 @@ function abrirConfigPix() {
             <input type="text" id="pixKeyInput" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória" value="${saved.pix_key || ''}" oninput="atualizarPreviewChave(this.value)">
         </div>
         <div id="pixKeyPreview" style="display:none;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:rgba(88,101,242,0.08);border:1px solid rgba(88,101,242,0.28);margin-bottom:16px;">
-            <span id="pixKeyIcon" style="font-size:24px;"></span>
+            <div id="pixKeyIcon" style="color:var(--primary);"></div>
             <div style="display:flex;flex-direction:column;gap:3px;">
                 <span id="pixKeyTipoLabel" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-secondary);"></span>
                 <span id="pixKeyFormatada" style="font-size:14px;font-weight:600;color:var(--text-primary);font-family:monospace;"></span>
@@ -1098,7 +1099,8 @@ function atualizarPreviewChave(valor) {
     if (!valor.trim()) { preview.style.display = 'none'; return; }
     const r = formatarChavePix(valor);
     if (!r.tipo) { preview.style.display = 'none'; return; }
-    icon.textContent  = PIX_ICONS[r.tipo] || '🔑';
+    icon.innerHTML    = `<i data-lucide="${PIX_ICONS[r.tipo] || 'key'}" style="width:24px;height:24px;"></i>`;
+    if (window.lucide) lucide.createIcons();
     label.textContent = r.label;
     fmt.textContent   = r.exibicao;
     preview.style.display = 'flex';
@@ -1193,16 +1195,19 @@ function renderAutomationToggles() {
     const container = document.querySelector('.automations-grid');
     if (!container) return;
     const items = [
-        { key: 'mensagens_automaticas', title: 'Mensagens Automáticas', desc: 'Enviar mensagens automáticas após compra' },
-        { key: 'cargos_automaticos', title: 'Cargos Automáticos', desc: 'Atribuir cargos automaticamente aos compradores' },
-        { key: 'respostas_automaticas', title: 'Respostas Automáticas', desc: 'Responder automaticamente a mensagens' },
-        { key: 'logs_automaticos', title: 'Logs Automáticos', desc: 'Registrar automaticamente todas as atividades' },
-        { key: 'entrega_automatica', title: 'Entrega Automática', desc: 'Entregar produtos digitais automaticamente' },
+        { key: 'mensagens_automaticas', title: 'Mensagens Automáticas', desc: 'Enviar mensagens automáticas após compra', icon: 'message-square' },
+        { key: 'cargos_automaticos', title: 'Cargos Automáticos', desc: 'Atribuir cargos automaticamente aos compradores', icon: 'shield-check' },
+        { key: 'respostas_automaticas', title: 'Respostas Automáticas', desc: 'Responder automaticamente a mensagens', icon: 'reply-all' },
+        { key: 'logs_automaticos', title: 'Logs Automáticos', desc: 'Registrar automaticamente todas as atividades', icon: 'file-text' },
+        { key: 'entrega_automatica', title: 'Entrega Automática', desc: 'Entregar produtos automaticamente após pagamento', icon: 'send' }
     ];
     container.innerHTML = items.map(item => `
         <div class="automation-card">
             <div class="automation-header">
-                <h3>${item.title}</h3>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <i data-lucide="${item.icon}" style="width:20px;height:20px;color:var(--primary);"></i>
+                    <h3>${item.title}</h3>
+                </div>
                 <label class="switch">
                     <input type="checkbox" data-automation="${item.key}" ${currentAutomations[item.key] ? 'checked' : ''} onchange="toggleAutomation('${item.key}', this.checked)">
                     <span class="slider"></span>
@@ -1211,6 +1216,7 @@ function renderAutomationToggles() {
             <p>${item.desc}</p>
         </div>
     `).join('');
+    if (window.lucide) lucide.createIcons();
 }
 
 async function toggleAutomation(key, value) {
@@ -1282,6 +1288,7 @@ const modalBody  = document.getElementById('modalBody');
 function showModal(title, content) {
     modalTitle.textContent = title;
     modalBody.innerHTML    = content;
+    if (window.lucide) lucide.createIcons();
     modal.classList.add('show');
 }
 
@@ -1294,11 +1301,12 @@ function showToast(message, type = 'info') {
     const toastMsg = document.getElementById('toastMessage');
     if (!toast || !toastMsg) return;
     const icons = {
-        success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
-        error:   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
-        info:    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+        success: '<i data-lucide="check-circle"></i>',
+        error:   '<i data-lucide="alert-circle"></i>',
+        info:    '<i data-lucide="info"></i>',
     };
     toastMsg.innerHTML  = `${icons[type] || icons.info} <span>${message}</span>`;
+    if (window.lucide) lucide.createIcons();
     toast.className     = `toast show ${type}`;
     clearTimeout(toast._timeout);
     toast._timeout = setTimeout(() => { toast.classList.remove('show'); }, 3500);
